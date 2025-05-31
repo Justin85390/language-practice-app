@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Practice App Embed</title>
+    <style>
+        /* Responsive iframe styles */
+        .iframe-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 75%; /* Adjust this value to control height ratio */
+            overflow: hidden;
+        }
+        .iframe-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Example of how to embed the app -->
+    <div class="iframe-container">
+        <iframe 
+            src="https://language-practice-app.netlify.app" 
+            title="Language Practice App"
+            allow="microphone"
+            allowfullscreen>
+        </iframe>
+    </div>
+
+    <!-- Code snippet for copying -->
+    <pre style="background: #f5f5f5; padding: 20px; margin-top: 20px; overflow-x: auto;">
+<code>&lt;div style="position: relative; width: 100%; height: 0; padding-bottom: 75%; overflow: hidden;"&gt;
+    &lt;iframe 
+        src="https://language-practice-app.netlify.app"
+        title="Language Practice App"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
+        allow="microphone"
+        allowfullscreen&gt;
+    &lt;/iframe&gt;
+&lt;/div&gt;</code>
+    </pre>
+</body>
+</html> 
