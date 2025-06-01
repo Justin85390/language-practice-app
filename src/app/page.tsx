@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -76,46 +76,140 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
 
+  // Add device detection
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Detect mobile device on component mount
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor;
+      const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+      setIsMobileDevice(isMobile);
+      console.log('Device type:', isMobile ? 'mobile' : 'desktop');
+    };
+
+    checkMobile();
+  }, []);
+
+  const getAudioConstraints = () => {
+    const baseConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+
+    if (isMobileDevice) {
+      return {
+        ...baseConstraints,
+        channelCount: 1,
+        sampleRate: 44100
+      };
+    }
+
+    return baseConstraints;
+  };
+
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      console.log(`Starting recording on ${isMobileDevice ? 'mobile' : 'desktop'}...`);
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: getAudioConstraints()
+      });
+
+      const options = {
+        mimeType: 'audio/webm;codecs=opus'
+      };
+
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        console.log('Opus codec not supported, falling back to default codec');
+        mediaRecorder = new MediaRecorder(stream);
+      }
+
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
+        console.log(`Audio data available (${isMobileDevice ? 'mobile' : 'desktop'}):`, e.data.size);
         if (e.data.size > 0) {
           chunksRef.current.push(e.data);
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
+        const errorMessage = isMobileDevice
+          ? 'Recording error. Please check microphone permissions in your mobile settings.'
+          : 'Error during recording. Please check your microphone settings.';
+        alert(errorMessage);
+      };
+
+      // Collect data more frequently on mobile
+      const interval = isMobileDevice ? 500 : 1000;
+      mediaRecorder.start(interval);
+      console.log(`Recording started (${interval}ms intervals)`);
       setIsRecording(true);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
-      alert('Error accessing microphone. Please ensure you have granted microphone permissions.');
+      console.error('Microphone access error:', error);
+      const errorMessage = isMobileDevice
+        ? 'Unable to access microphone. Please check permissions in both app and browser settings.'
+        : 'Unable to access microphone. Please ensure microphone permissions are granted.';
+      alert(errorMessage);
     }
   };
 
   const handleAudioSubmission = async (audioData: Blob[]) => {
     try {
-      setIsProcessing(true); // Start processing
-      const userAudioBlob = new Blob(audioData, { type: 'audio/webm' });
+      console.log(`Processing audio submission on ${isMobileDevice ? 'mobile' : 'desktop'}...`);
+      console.log('Audio chunks:', audioData.length);
+      setIsProcessing(true);
       
-      // First, convert speech to text
+      const userAudioBlob = new Blob(audioData, { 
+        type: 'audio/webm;codecs=opus'
+      });
+      console.log('Audio blob size:', userAudioBlob.size);
+      
+      // Minimum size threshold (different for mobile/desktop)
+      const minSize = isMobileDevice ? 100 : 200;
+      if (userAudioBlob.size < minSize) {
+        throw new Error(
+          isMobileDevice
+            ? 'No audio recorded. Please try speaking louder or check microphone permissions.'
+            : 'No audio detected. Please speak closer to the microphone.'
+        );
+      }
+
       const formData = new FormData();
       formData.append('audio', userAudioBlob);
       
+      console.log('Sending to speech-to-text API...');
       const transcriptionResponse = await fetch('/api/speech-to-text', {
         method: 'POST',
         body: formData,
       });
       
-      if (!transcriptionResponse.ok) throw new Error('Speech to text failed');
+      if (!transcriptionResponse.ok) {
+        const errorData = await transcriptionResponse.json().catch(() => ({}));
+        console.error('Speech to text failed:', errorData);
+        throw new Error(errorData.error || 'Failed to convert speech to text. Please try again.');
+      }
+      
       const { text } = await transcriptionResponse.json();
+      console.log('Transcribed text:', text);
+
+      if (!text || text.trim() === '') {
+        throw new Error(
+          isMobileDevice
+            ? 'No speech detected. Please try speaking louder or check your microphone.'
+            : 'No speech detected. Please check your microphone and try again.'
+        );
+      }
 
       // Add user message
       setMessages(prev => [...prev, {
@@ -170,24 +264,34 @@ export default function Home() {
         audioUrl
       }]);
 
-    } catch (error) {
-      console.error('Error processing audio:', error);
-      alert('Error processing audio. Please try again.');
+    } catch (error: any) {
+      console.error(`Error processing ${isMobileDevice ? 'mobile' : 'desktop'} audio:`, error);
+      alert(`Recording error: ${error.message || 'Please try again'}`);
     } finally {
-      setIsProcessing(false); // End processing
+      setIsProcessing(false);
     }
   };
 
   const stopRecording = () => {
-    if (!mediaRecorderRef.current || !isRecording) return;
+    console.log('Stopping recording...');
+    if (!mediaRecorderRef.current || !isRecording) {
+      console.log('No active recording to stop');
+      return;
+    }
 
     mediaRecorderRef.current.onstop = () => {
+      console.log('Recording stopped, processing chunks...');
+      console.log('Number of chunks:', chunksRef.current.length);
+      
       // Pass the chunks directly to handleAudioSubmission
       handleAudioSubmission(chunksRef.current);
       
       // Clean up
       if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        mediaRecorderRef.current.stream.getTracks().forEach(track => {
+          track.stop();
+          console.log('Audio track stopped');
+        });
       }
       setIsRecording(false);
     };
