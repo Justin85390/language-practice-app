@@ -26,11 +26,13 @@ import {
   SelectChangeEvent,
   CircularProgress,
   Tooltip,
+  Fade,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import FeedbackIcon from '@mui/icons-material/RateReview';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { SKILLS, LEVELS, WELCOMING_VISITORS_B1, Module, Course, TargetLanguage } from '@/utils/courseData';
 
 // Mock target language phrases - in real app, these would come from your course data
@@ -72,6 +74,7 @@ export default function Home() {
   const [feedbackStyle, setFeedbackStyle] = useState('');
   const [timeLimit, setTimeLimit] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showConversation, setShowConversation] = useState(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -232,22 +235,8 @@ export default function Home() {
   return (
     <Container maxWidth="xl">
       <Box sx={{ my: 2, px: { xs: 1, sm: 2 } }}>
-        <Typography 
-          variant="h2" 
-          component="h1" 
-          gutterBottom 
-          align="center"
-          sx={{
-            fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-            mb: { xs: 2, sm: 4 }
-          }}
-        >
-          Language Practice App
-        </Typography>
-        
-        <Grid container spacing={2}>
-          {/* Practice Settings - Full width on mobile, normal on desktop */}
-          <Grid item xs={12}>
+        <Fade in={!showConversation}>
+          <Box sx={{ display: showConversation ? 'none' : 'block' }}>
             <Paper elevation={3} sx={{ p: { xs: 2, sm: 4 } }}>
               <Typography variant="h5" gutterBottom>
                 Practice Settings
@@ -484,271 +473,304 @@ export default function Home() {
                   </Grid>
                 </AccordionDetails>
               </Accordion>
+
+              {/* Start Conversation Button */}
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                size="large"
+                sx={{ mt: 3 }}
+                onClick={() => setShowConversation(true)}
+                disabled={!skill || !level || !selectedCourse}
+              >
+                Start Conversation
+              </Button>
             </Paper>
-          </Grid>
+          </Box>
+        </Fade>
 
-          {/* Target Language and Conversation - Side by side on desktop, stacked on mobile */}
-          <Grid item xs={12} md={6}>
-            <Paper 
-              elevation={3} 
-              sx={{ 
-                p: { xs: 2, sm: 4 }, 
-                height: '100%',
-                minHeight: { xs: '300px', sm: '400px' }
-              }}
-            >
-              <Typography variant="h5" gutterBottom>
-                Target Language
-              </Typography>
+        <Fade in={showConversation}>
+          <Box sx={{ display: showConversation ? 'block' : 'none' }}>
+            <Grid container spacing={2}>
+              {/* Target Language */}
+              <Grid item xs={12} md={6}>
+                <Paper 
+                  elevation={3} 
+                  sx={{ 
+                    p: { xs: 2, sm: 4 }, 
+                    height: '100%',
+                    minHeight: { xs: '300px', sm: '400px' }
+                  }}
+                >
+                  <Typography variant="h5" gutterBottom>
+                    Target Language
+                  </Typography>
 
-              {/* Target Language List */}
-              <List sx={{ 
-                overflowY: 'auto', 
-                maxHeight: { xs: '250px', sm: '350px' }
-              }}>
-                {!selectedModule ? (
-                  <ListItem>
-                    <ListItemText primary="Please select a module" sx={{ color: 'text.secondary' }} />
-                  </ListItem>
-                ) : !selectedCourse ? (
-                  <ListItem>
-                    <ListItemText primary="Please select a course" sx={{ color: 'text.secondary' }} />
-                  </ListItem>
-                ) : targetLanguageData.length === 0 ? (
-                  <ListItem>
-                    <ListItemText primary="No target language available" sx={{ color: 'text.secondary' }} />
-                  </ListItem>
-                ) : (
-                  targetLanguageData.map((courseData) => (
-                    courseData.targetLanguage.map((category, catIndex) => (
-                      <Box key={catIndex} sx={{ mb: 2 }}>
-                        <Typography
-                          variant="subtitle1"
+                  {/* Target Language List */}
+                  <List sx={{ 
+                    overflowY: 'auto', 
+                    maxHeight: { xs: '250px', sm: '350px' }
+                  }}>
+                    {!selectedModule ? (
+                      <ListItem>
+                        <ListItemText primary="Please select a module" sx={{ color: 'text.secondary' }} />
+                      </ListItem>
+                    ) : !selectedCourse ? (
+                      <ListItem>
+                        <ListItemText primary="Please select a course" sx={{ color: 'text.secondary' }} />
+                      </ListItem>
+                    ) : targetLanguageData.length === 0 ? (
+                      <ListItem>
+                        <ListItemText primary="No target language available" sx={{ color: 'text.secondary' }} />
+                      </ListItem>
+                    ) : (
+                      targetLanguageData.map((courseData) => (
+                        courseData.targetLanguage.map((category, catIndex) => (
+                          <Box key={catIndex} sx={{ mb: 2 }}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: 'bold',
+                                color: 'text.primary',
+                                mb: 1
+                              }}
+                            >
+                              {category.category}
+                            </Typography>
+                            <List sx={{ pl: 2 }}>
+                              {category.expressions.map((expression, exprIndex) => (
+                                <ListItem key={exprIndex} dense>
+                                  <ListItemText
+                                    primary={expression}
+                                    sx={{
+                                      '& .MuiListItemText-primary': {
+                                        fontSize: '0.9rem',
+                                        color: 'text.secondary'
+                                      }
+                                    }}
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          </Box>
+                        ))
+                      ))
+                    )}
+                  </List>
+                </Paper>
+              </Grid>
+
+              {/* Conversation */}
+              <Grid item xs={12} md={6}>
+                <Paper 
+                  elevation={3} 
+                  sx={{ 
+                    p: { xs: 2, sm: 4 }, 
+                    height: '100%',
+                    minHeight: { xs: '300px', sm: '400px' },
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                >
+                  <Typography variant="h5" gutterBottom>
+                    Conversation
+                  </Typography>
+                  
+                  {/* Messages area */}
+                  <Box sx={{ 
+                    flexGrow: 1, 
+                    overflowY: 'auto', 
+                    mb: 2,
+                    minHeight: { xs: '200px', sm: '300px' },
+                    maxHeight: { xs: '250px', sm: '350px' },
+                    bgcolor: 'background.default',
+                    p: 2,
+                    borderRadius: 1,
+                    '&::-webkit-scrollbar': {
+                      width: '8px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      backgroundColor: 'rgba(0,0,0,0.1)',
+                      borderRadius: '4px',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '4px',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                      },
+                    },
+                  }}>
+                    {messages.map((message, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          mb: 2,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: message.role === 'user' ? 'flex-end' : 'flex-start'
+                        }}
+                      >
+                        <Paper
                           sx={{
-                            fontWeight: 'bold',
-                            color: 'text.primary',
-                            mb: 1
+                            p: { xs: 1.5, sm: 2 },
+                            maxWidth: '85%',
+                            bgcolor: message.role === 'user' ? 'primary.light' : 'background.paper',
+                            color: message.role === 'user' ? 'primary.contrastText' : 'text.primary'
                           }}
                         >
-                          {category.category}
+                          <Typography variant="body1" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                            {message.content}
+                          </Typography>
+                        </Paper>
+                        <Typography variant="caption" sx={{ mt: 0.5 }}>
+                          {message.timestamp.toLocaleTimeString()}
                         </Typography>
-                        <List sx={{ pl: 2 }}>
-                          {category.expressions.map((expression, exprIndex) => (
-                            <ListItem key={exprIndex} dense>
-                              <ListItemText
-                                primary={expression}
-                                sx={{
-                                  '& .MuiListItemText-primary': {
-                                    fontSize: '0.9rem',
-                                    color: 'text.secondary'
-                                  }
-                                }}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
                       </Box>
-                    ))
-                  ))
-                )}
-              </List>
-            </Paper>
-          </Grid>
+                    ))}
+                  </Box>
 
-          <Grid item xs={12} md={6}>
-            <Paper 
-              elevation={3} 
-              sx={{ 
-                p: { xs: 2, sm: 4 }, 
-                height: '100%',
-                minHeight: { xs: '300px', sm: '400px' },
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-            >
-              <Typography variant="h5" gutterBottom>
-                Conversation
-              </Typography>
-              
-              {/* Messages area */}
-              <Box sx={{ 
-                flexGrow: 1, 
-                overflowY: 'auto', 
-                mb: 2,
-                minHeight: { xs: '200px', sm: '300px' },
-                maxHeight: { xs: '250px', sm: '350px' },
-                bgcolor: 'background.default',
-                p: 2,
-                borderRadius: 1,
-                '&::-webkit-scrollbar': {
-                  width: '8px',
-                },
-                '&::-webkit-scrollbar-track': {
-                  backgroundColor: 'rgba(0,0,0,0.1)',
-                  borderRadius: '4px',
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'rgba(0,0,0,0.2)',
-                  borderRadius: '4px',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0,0,0,0.3)',
-                  },
-                },
-              }}>
-                {messages.map((message, index) => (
-                  <Box
-                    key={index}
-                    sx={{
-                      mb: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: message.role === 'user' ? 'flex-end' : 'flex-start'
-                    }}
-                  >
-                    <Paper
-                      sx={{
+                  {/* Recording controls */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    gap: 1, 
+                    alignItems: 'center',
+                    mt: 'auto',
+                    justifyContent: 'center'
+                  }}>
+                    <IconButton 
+                      color={isRecording ? 'error' : 'primary'}
+                      onClick={toggleRecording}
+                      disabled={!skill || !level || !selectedCourse || isProcessing}
+                      sx={{ 
                         p: { xs: 1.5, sm: 2 },
-                        maxWidth: '85%',
-                        bgcolor: message.role === 'user' ? 'primary.light' : 'background.paper',
-                        color: message.role === 'user' ? 'primary.contrastText' : 'text.primary'
+                        '& svg': {
+                          fontSize: { xs: '1.5rem', sm: '2rem' }
+                        }
                       }}
                     >
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                        {message.content}
-                      </Typography>
-                    </Paper>
-                    <Typography variant="caption" sx={{ mt: 0.5 }}>
-                      {message.timestamp.toLocaleTimeString()}
+                      {isRecording ? <StopIcon /> : <MicIcon />}
+                    </IconButton>
+                    {isProcessing && (
+                      <CircularProgress 
+                        size={24} 
+                        sx={{ 
+                          ml: 1,
+                          color: 'primary.main'
+                        }} 
+                      />
+                    )}
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
+                        color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
+                      }}
+                    >
+                      {!skill || !level || !selectedCourse 
+                        ? 'Please select skill, level, and course to start'
+                        : isProcessing
+                          ? 'Thinking...'
+                          : isRecording 
+                            ? 'Click to stop recording...' 
+                            : 'Click to start speaking'}
                     </Typography>
+                    <Tooltip title="Get feedback on your conversation">
+                      <IconButton
+                        color="primary"
+                        onClick={async () => {
+                          try {
+                            setIsProcessing(true);
+                            // Get only user messages from the conversation
+                            const userMessages = messages
+                              .filter(m => m.role === 'user')
+                              .map(m => m.content)
+                              .join('\n');
+                            
+                            // Request feedback
+                            const feedbackResponse = await fetch('/api/chat', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                message: `Absolutely, some useful feedback is: [Analyze my use of target language expressions in this conversation and provide specific examples of what I did well and what expressions I could add. Here are my responses so far:]\n${userMessages}`,
+                                context: { 
+                                  skill, 
+                                  level, 
+                                  moduleId: selectedModule,
+                                  courseId: selectedCourse,
+                                  isFullModule: selectedCourse === `${selectedModule}_practice`,
+                                  moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                                }
+                              }),
+                            });
+
+                            if (!feedbackResponse.ok) throw new Error('Feedback request failed');
+                            const { response } = await feedbackResponse.json();
+
+                            // Add feedback as a new message
+                            setMessages(prev => [...prev, {
+                              role: 'assistant',
+                              content: response,
+                              timestamp: new Date()
+                            }]);
+
+                            // Convert feedback to speech
+                            const ttsResponse = await fetch('/api/text-to-speech', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                text: response,
+                                level
+                              }),
+                            });
+
+                            if (!ttsResponse.ok) throw new Error('Text to speech failed');
+                            const audioBlob = await ttsResponse.blob();
+                            const audioUrl = URL.createObjectURL(audioBlob);
+
+                            // Auto-play the audio response
+                            const audio = new Audio(audioUrl);
+                            audio.play();
+
+                          } catch (error) {
+                            console.error('Error getting feedback:', error);
+                            alert('Error getting feedback. Please try again.');
+                          } finally {
+                            setIsProcessing(false);
+                          }
+                        }}
+                        disabled={!messages.length || isProcessing}
+                        sx={{ 
+                          ml: 2,
+                          p: { xs: 1.5, sm: 2 },
+                          '& svg': {
+                            fontSize: { xs: '1.5rem', sm: '2rem' }
+                          }
+                        }}
+                      >
+                        <FeedbackIcon />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
-                ))}
-              </Box>
+                </Paper>
+              </Grid>
 
-              {/* Recording controls */}
-              <Box sx={{ 
-                display: 'flex', 
-                gap: 1, 
-                alignItems: 'center',
-                mt: 'auto',
-                justifyContent: 'center'
-              }}>
-                <IconButton 
-                  color={isRecording ? 'error' : 'primary'}
-                  onClick={toggleRecording}
-                  disabled={!skill || !level || !selectedCourse || isProcessing}
-                  sx={{ 
-                    p: { xs: 1.5, sm: 2 },
-                    '& svg': {
-                      fontSize: { xs: '1.5rem', sm: '2rem' }
-                    }
-                  }}
+              {/* Back to Settings Button */}
+              <Grid item xs={12}>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<ArrowBackIcon />}
+                  onClick={() => setShowConversation(false)}
+                  sx={{ mt: 2 }}
                 >
-                  {isRecording ? <StopIcon /> : <MicIcon />}
-                </IconButton>
-                {isProcessing && (
-                  <CircularProgress 
-                    size={24} 
-                    sx={{ 
-                      ml: 1,
-                      color: 'primary.main'
-                    }} 
-                  />
-                )}
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                    color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
-                  }}
-                >
-                  {!skill || !level || !selectedCourse 
-                    ? 'Please select skill, level, and course to start'
-                    : isProcessing
-                      ? 'Thinking...'
-                      : isRecording 
-                        ? 'Click to stop recording...' 
-                        : 'Click to start speaking'}
-                </Typography>
-                <Tooltip title="Get feedback on your conversation">
-                  <IconButton
-                    color="primary"
-                    onClick={async () => {
-                      try {
-                        setIsProcessing(true);
-                        // Get only user messages from the conversation
-                        const userMessages = messages
-                          .filter(m => m.role === 'user')
-                          .map(m => m.content)
-                          .join('\n');
-                        
-                        // Request feedback
-                        const feedbackResponse = await fetch('/api/chat', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            message: `Absolutely, some useful feedback is: [Analyze my use of target language expressions in this conversation and provide specific examples of what I did well and what expressions I could add. Here are my responses so far:]\n${userMessages}`,
-                            context: { 
-                              skill, 
-                              level, 
-                              moduleId: selectedModule,
-                              courseId: selectedCourse,
-                              isFullModule: selectedCourse === `${selectedModule}_practice`,
-                              moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
-                            }
-                          }),
-                        });
-
-                        if (!feedbackResponse.ok) throw new Error('Feedback request failed');
-                        const { response } = await feedbackResponse.json();
-
-                        // Add feedback as a new message
-                        setMessages(prev => [...prev, {
-                          role: 'assistant',
-                          content: response,
-                          timestamp: new Date()
-                        }]);
-
-                        // Convert feedback to speech
-                        const ttsResponse = await fetch('/api/text-to-speech', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            text: response,
-                            level
-                          }),
-                        });
-
-                        if (!ttsResponse.ok) throw new Error('Text to speech failed');
-                        const audioBlob = await ttsResponse.blob();
-                        const audioUrl = URL.createObjectURL(audioBlob);
-
-                        // Auto-play the audio response
-                        const audio = new Audio(audioUrl);
-                        audio.play();
-
-                      } catch (error) {
-                        console.error('Error getting feedback:', error);
-                        alert('Error getting feedback. Please try again.');
-                      } finally {
-                        setIsProcessing(false);
-                      }
-                    }}
-                    disabled={!messages.length || isProcessing}
-                    sx={{ 
-                      ml: 2,
-                      p: { xs: 1.5, sm: 2 },
-                      '& svg': {
-                        fontSize: { xs: '1.5rem', sm: '2rem' }
-                      }
-                    }}
-                  >
-                    <FeedbackIcon />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </Paper>
-          </Grid>
-        </Grid>
+                  Back to Settings
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        </Fade>
       </Box>
     </Container>
   );
