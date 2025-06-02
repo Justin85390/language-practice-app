@@ -242,49 +242,95 @@ export default function Home() {
     }
   };
 
+  // Add Safari-specific audio conversion utility
+  const convertSafariAudioToWav = async (audioBlob: Blob): Promise<Blob> => {
+    if (!isSafari.current || isIOS.current) {
+      // Only convert for desktop Safari
+      return audioBlob;
+    }
+
+    try {
+      console.log('Starting Safari audio conversion to WAV...');
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+
+      // Read the blob as array buffer
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      // Decode the audio data
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Create WAV file
+      const numberOfChannels = 1;
+      const length = audioBuffer.length;
+      const sampleRate = audioBuffer.sampleRate;
+      const wavBuffer = new ArrayBuffer(44 + length * 2);
+      const view = new DataView(wavBuffer);
+      
+      // Write WAV header
+      const writeString = (view: DataView, offset: number, string: string) => {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      };
+
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, 36 + length * 2, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, numberOfChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, numberOfChannels * 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, length * 2, true);
+
+      // Write audio data
+      const channel = audioBuffer.getChannelData(0);
+      let offset = 44;
+      for (let i = 0; i < length; i++) {
+        const sample = Math.max(-1, Math.min(1, channel[i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+
+      console.log('Safari audio conversion completed');
+      return new Blob([wavBuffer], { type: 'audio/wav' });
+    } catch (error) {
+      console.error('Safari audio conversion error:', error);
+      // On conversion failure, return original blob
+      return audioBlob;
+    }
+  };
+
   const handleAudioSubmission = async (audioData: Blob[]) => {
     try {
       console.log('Starting audio submission...');
       setIsProcessing(true);
 
-      // Create blob with appropriate type for the browser
-      let userAudioBlob;
-      if (isSafari.current) {
-        // For Safari, convert to WAV format which is more widely supported
-        console.log('Converting audio for Safari...');
-        try {
-          // Combine all chunks into a single blob
-          const audioBlob = new Blob(audioData, { type: 'audio/mp4' });
-          
-          // Create an audio element to check the actual format
-          const audio = new Audio();
-          audio.src = URL.createObjectURL(audioBlob);
-          
-          // Wait for metadata to load
-          await new Promise((resolve) => {
-            audio.addEventListener('loadedmetadata', resolve);
-            audio.addEventListener('error', resolve); // Handle loading error
-          });
-          
-          console.log('Safari audio format:', audio.src);
-          userAudioBlob = audioBlob;
-        } catch (error) {
-          console.error('Safari audio conversion error:', error);
-          // Fallback to original format
-          userAudioBlob = new Blob(audioData, { type: 'audio/mp4' });
-        }
-      } else {
-        userAudioBlob = new Blob(audioData, { type: 'audio/webm;codecs=opus' });
-      }
-      
+      // Create initial blob with browser-appropriate type
+      const initialBlob = new Blob(audioData, { 
+        type: isSafari.current && !isIOS.current ? 'audio/mp4' : 'audio/webm;codecs=opus' 
+      });
+
+      // Only attempt conversion for desktop Safari
+      const userAudioBlob = isSafari.current && !isIOS.current
+        ? await convertSafariAudioToWav(initialBlob)
+        : initialBlob;
+
       if (userAudioBlob.size < (isMobileDevice || isSafari.current ? 100 : 200)) {
         throw new Error('No audio detected. Please try speaking again.');
       }
 
-      console.log('Audio blob created:', {
+      console.log('Audio blob prepared:', {
         type: userAudioBlob.type,
         size: userAudioBlob.size,
-        browser: isSafari.current ? 'safari' : 'other'
+        browser: isSafari.current ? 'safari' : 'other',
+        isMobile: isMobileDevice,
+        isIOS: isIOS.current
       });
 
       const formData = new FormData();
