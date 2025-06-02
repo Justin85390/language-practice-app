@@ -1147,32 +1147,40 @@ export default function Home() {
                     height: '100%',
                     minHeight: { xs: '300px', sm: '400px' },
                     display: 'flex',
-                    flexDirection: 'column'
+                    flexDirection: 'column',
+                    position: 'relative' // Added for absolute positioning of mobile elements
                   }}
                 >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  {/* Header */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    mb: 2,
+                    ...(isMobileDevice && {
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 1
+                    })
+                  }}>
                     <Typography variant="h5">
                       Conversation
                     </Typography>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => {
-                        setShowConversation(false);
-                        setMessages([]);
-                      }}
-                    >
-                      Stop Conversation
-                    </Button>
                   </Box>
-
+              
                   {/* Messages area */}
                   <Box sx={{ 
                     flexGrow: 1, 
                     overflowY: 'auto', 
                     mb: 2,
-                    minHeight: { xs: '200px', sm: '300px' },
-                    maxHeight: { xs: '250px', sm: '350px' },
+                    minHeight: { 
+                      xs: isMobileDevice ? '250px' : '200px', 
+                      sm: '300px' 
+                    },
+                    maxHeight: { 
+                      xs: isMobileDevice ? '350px' : '250px', 
+                      sm: '350px' 
+                    },
                     bgcolor: 'background.default',
                     p: 2,
                     borderRadius: 1,
@@ -1214,9 +1222,16 @@ export default function Home() {
                           </Typography>
                           {message.role === 'assistant' && message.audioUrl && (
                             <IconButton
-                              size="small"
+                              size={isMobileDevice ? "large" : "small"}
                               onClick={() => handleAudioPlayback(message.audioUrl!, index)}
-                              sx={{ mt: 1 }}
+                              sx={{
+                                marginTop: 1,
+                                ...(isMobileDevice && {
+                                  '& svg': {
+                                    fontSize: '2rem'
+                                  }
+                                })
+                              }}
                             >
                               {message.isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
                             </IconButton>
@@ -1229,152 +1244,205 @@ export default function Home() {
                     ))}
                   </Box>
 
-                  {/* Recording controls */}
+                  {/* Controls Container */}
                   <Box sx={{ 
-                    display: 'flex', 
-                    gap: 1, 
+                    display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
+                    gap: 2,
                     mt: 'auto',
-                    justifyContent: 'center'
+                    ...(isMobileDevice && {
+                      position: 'sticky',
+                      bottom: 0,
+                      bgcolor: 'background.paper',
+                      pt: 2,
+                      pb: 2
+                    })
                   }}>
-                    <IconButton 
-                      color={isRecording ? 'error' : 'primary'}
-                      onClick={toggleRecording}
-                      disabled={isProcessing}
-                      sx={{ 
-                        p: { xs: 1.5, sm: 2 },
-                        '& svg': {
-                          fontSize: { xs: '1.5rem', sm: '2rem' }
-                        }
-                      }}
-                    >
-                      {isRecording ? <StopIcon /> : <MicIcon />}
-                    </IconButton>
-                    {isProcessing && (
-                      <CircularProgress 
-                        size={24} 
+                    {/* Recording Controls */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      gap: 1, 
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '100%'
+                    }}>
+                      <IconButton 
+                        color={isRecording ? 'error' : 'primary'}
+                        onClick={toggleRecording}
+                        disabled={isProcessing}
                         sx={{ 
-                          ml: 1,
-                          color: 'primary.main'
-                        }} 
-                      />
-                    )}
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                        color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
-                      }}
-                    >
-                      {isProcessing
-                        ? 'Thinking...'
-                        : isRecording 
-                          ? 'Click to stop recording...' 
-                          : 'Click to start speaking'}
-                    </Typography>
-                    <Tooltip title="Get feedback on your conversation">
-                      <IconButton
-                        color="primary"
-                        onClick={async () => {
-                          try {
-                            setIsProcessing(true);
-                            // Get only user messages from the conversation
-                            const userMessages = messages
-                              .filter(m => m.role === 'user')
-                              .map(m => m.content)
-                              .join('\n');
-                            
-                            // Request feedback
-                            const feedbackResponse = await fetch('/api/chat', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                message: `Please analyze my responses and provide feedback on my language use${
-                                  conversationType === 'skill' 
-                                    ? ', especially regarding the target expressions'
-                                    : ', considering the professional context'
-                                }. Here are my responses:\n${userMessages}`,
-                                context: {
-                                  conversationType,
-                                  level,
-                                  ...(conversationType === 'skill' ? {
-                                    skill,
-                                    moduleId: selectedModule,
-                                    courseId: selectedCourse,
-                                    isFullModule: selectedCourse === `${selectedModule}_practice`,
-                                    moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
-                                  } : {
-                                    jobTitle,
-                                    customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
-                                    taskObjective,
-                                    customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
-                                    audience,
-                                    formality,
-                                    industry,
-                                    customIndustry: industry === 'Other' ? customIndustry : undefined,
-                                    feedbackStyle,
-                                    timeLimit
-                                  })
-                                }
-                              }),
-                            });
-
-                            if (!feedbackResponse.ok) throw new Error('Feedback request failed');
-                            const { response } = await feedbackResponse.json();
-
-                            // Add feedback as a new message
-                            setMessages(prev => [...prev, {
-                              role: 'assistant',
-                              content: response,
-                              timestamp: new Date(),
-                              isPlaying: false
-                            } as Message]);
-
-                            // Convert feedback to speech
-                            const ttsResponse = await fetch('/api/text-to-speech', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                text: response,
-                                level,
-                                browser: isSafari.current ? 'safari' : 'other'
-                              }),
-                            });
-
-                            if (!ttsResponse.ok) throw new Error('Text to speech failed');
-                            const audioBlob = await ttsResponse.blob();
-                            const audioUrl = URL.createObjectURL(
-                              isSafari.current && !isIOS.current
-                                ? new Blob([audioBlob], { type: 'audio/mpeg' })
-                                : audioBlob
-                            );
-
-                            // Update the message with audio
-                            setMessages(prev => {
-                              const newMessages = [...prev];
-                              newMessages[newMessages.length - 1].audioUrl = audioUrl;
-                              return newMessages;
-                            });
-
-                          } catch (error) {
-                            console.error('Error getting feedback:', error);
-                            alert('Error getting feedback. Please try again.');
-                          } finally {
-                            setIsProcessing(false);
-                          }
-                        }}
-                        disabled={!messages.length || isProcessing}
-                        sx={{ 
-                          ml: 2,
-                          p: { xs: 1.5, sm: 2 },
-                          '& svg': {
-                            fontSize: { xs: '1.5rem', sm: '2rem' }
-                          }
+                          p: { xs: 2, sm: 2 },
+                          ...(isMobileDevice && {
+                            '& svg': {
+                              fontSize: '2.5rem'
+                            }
+                          })
                         }}
                       >
-                        <FeedbackIcon />
+                        {isRecording ? <StopIcon /> : <MicIcon />}
                       </IconButton>
-                    </Tooltip>
+                      {isProcessing && (
+                        <CircularProgress 
+                          size={isMobileDevice ? 32 : 24} 
+                          sx={{ 
+                            ml: 1,
+                            color: 'primary.main'
+                          }} 
+                        />
+                      )}
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: { xs: '1rem', sm: '0.9rem' },
+                          color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
+                        }}
+                      >
+                        {isProcessing
+                          ? 'Thinking...'
+                          : isRecording 
+                            ? 'Click to stop recording...' 
+                            : 'Click to start speaking'}
+                      </Typography>
+                      <Tooltip title="Get feedback on your conversation">
+                        <IconButton
+                          color="primary"
+                          onClick={async () => {
+                            try {
+                              setIsProcessing(true);
+                              // Get only user messages from the conversation
+                              const userMessages = messages
+                                .filter(m => m.role === 'user')
+                                .map(m => m.content)
+                                .join('\n');
+                              
+                              // Request feedback
+                              const feedbackResponse = await fetch('/api/chat', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  message: `Please analyze my responses and provide feedback on my language use${
+                                    conversationType === 'skill' 
+                                      ? ', especially regarding the target expressions'
+                                      : ', considering the professional context'
+                                  }. Here are my responses:\n${userMessages}`,
+                                  context: {
+                                    conversationType,
+                                    level,
+                                    ...(conversationType === 'skill' ? {
+                                      skill,
+                                      moduleId: selectedModule,
+                                      courseId: selectedCourse,
+                                      isFullModule: selectedCourse === `${selectedModule}_practice`,
+                                      moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                                    } : {
+                                      jobTitle,
+                                      customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
+                                      taskObjective,
+                                      customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
+                                      audience,
+                                      formality,
+                                      industry,
+                                      customIndustry: industry === 'Other' ? customIndustry : undefined,
+                                      feedbackStyle,
+                                      timeLimit
+                                    })
+                                  }
+                                }),
+                              });
+
+                              if (!feedbackResponse.ok) throw new Error('Feedback request failed');
+                              const { response } = await feedbackResponse.json();
+
+                              // Add feedback as a new message
+                              setMessages(prev => [...prev, {
+                                role: 'assistant',
+                                content: response,
+                                timestamp: new Date(),
+                                isPlaying: false
+                              } as Message]);
+
+                              // Convert feedback to speech
+                              const ttsResponse = await fetch('/api/text-to-speech', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  text: response,
+                                  level,
+                                  browser: isSafari.current ? 'safari' : 'other'
+                                }),
+                              });
+
+                              if (!ttsResponse.ok) throw new Error('Text to speech failed');
+                              const audioBlob = await ttsResponse.blob();
+                              const audioUrl = URL.createObjectURL(
+                                isSafari.current && !isIOS.current
+                                  ? new Blob([audioBlob], { type: 'audio/mpeg' })
+                                  : audioBlob
+                              );
+
+                              // Update the message with audio
+                              setMessages(prev => {
+                                const newMessages = [...prev];
+                                const lastMessage = newMessages[newMessages.length - 1];
+                                if (lastMessage && lastMessage.role === 'assistant') {
+                                  lastMessage.audioUrl = audioUrl;
+                                }
+                                return newMessages;
+                              });
+
+                              // Try to play audio automatically on desktop
+                              if (!isIOS.current && !isMobileDevice) {
+                                try {
+                                  await handleAudioPlayback(audioUrl, messages.length);
+                                } catch (error) {
+                                  console.warn('Desktop audio playback failed:', error);
+                                }
+                              }
+
+                            } catch (error) {
+                              console.error('Error getting feedback:', error);
+                              alert('Error getting feedback. Please try again.');
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }}
+                          disabled={!messages.length || isProcessing}
+                          sx={{ 
+                            ml: 2,
+                            p: { xs: 2, sm: 2 },
+                            ...(isMobileDevice && {
+                              '& svg': {
+                                fontSize: '2.5rem'
+                              }
+                            })
+                          }}
+                        >
+                          <FeedbackIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+
+                    {/* Stop Conversation Button - Mobile Specific Styling */}
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => {
+                        setShowConversation(false);
+                        setMessages([]);
+                      }}
+                      sx={{ 
+                        mt: 1,
+                        ...(isMobileDevice && {
+                          width: '100%',
+                          py: 1.5,
+                          fontSize: '1rem',
+                          borderRadius: '8px'
+                        })
+                      }}
+                    >
+                      Stop Conversation
+                    </Button>
                   </Box>
                 </Paper>
               </Grid>
