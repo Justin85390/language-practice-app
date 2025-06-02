@@ -465,8 +465,8 @@ export default function Home() {
 
             // Create audio URL with proper type for Safari
             const audioUrl = URL.createObjectURL(
-              isSafari.current 
-                ? new Blob([audioBlob], { type: 'audio/mp4' })  // Force MP4 for Safari
+              isSafari.current && !isIOS.current
+                ? new Blob([audioBlob], { type: 'audio/mpeg' })  // Use MP3 for Safari
                 : audioBlob
             );
 
@@ -479,16 +479,12 @@ export default function Home() {
               isPlaying: false
             } as Message]);
 
+            // Clear processing state before attempting playback
+            setIsProcessing(false);
+
             // Try to play audio
             if (!isIOS.current && !isMobileDevice) {
               try {
-                if (isSafari.current) {
-                  console.log('Initializing Safari audio playback...');
-                  // Initialize audio context for Safari
-                  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-                  const audioCtx = new AudioContext();
-                  await audioCtx.resume();
-                }
                 await handleAudioPlayback(audioUrl, messages.length);
               } catch (error) {
                 console.warn('Desktop audio playback failed:', error);
@@ -618,94 +614,96 @@ export default function Home() {
         setAudioPlaying(null);
       }
 
-      // For Safari/iOS/mobile, ensure audio context is initialized
-      if (isSafari.current || isIOS.current || isMobileDevice) {
-        console.log('Safari/mobile device detected, initializing audio context...');
-        await initializeIOSAudio();
-      }
-
-      console.log('Creating new audio element...');
-      const audio = new Audio(audioUrl);
-      
-      // Safari/iOS/mobile-specific settings
-      if (isSafari.current || isIOS.current || isMobileDevice) {
-        console.log('Applying Safari/mobile-specific audio settings...');
-        audio.preload = 'auto';
-        (audio as any).playsinline = true;
-        (audio as any).webkitPlaysinline = true;
-        audio.setAttribute('webkit-playsinline', 'true');
-        audio.volume = 1.0;
-      }
-
-      // Update UI before attempting playback
-      setMessages(prev => prev.map((msg, idx) => ({
-        ...msg,
-        isPlaying: idx === messageIndex
-      })));
-      
-      setAudioPlaying(audioUrl);
-
-      // Set up event listeners with more detailed logging
-      audio.addEventListener('loadstart', () => console.log('Audio loading started:', isSafari.current ? 'Safari' : 'other browser'));
-      audio.addEventListener('loadedmetadata', () => console.log('Audio metadata loaded, duration:', audio.duration));
-      audio.addEventListener('canplay', () => console.log('Audio can start playing, ready state:', audio.readyState));
-      audio.addEventListener('playing', () => console.log('Audio playback started, time:', audio.currentTime));
-      audio.addEventListener('error', (e) => console.error('Audio error:', e, audio.error));
-
-      // Wait for audio to be ready with more detailed timeout handling
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          const state = audio.readyState;
-          console.log('Audio loading timed out, current state:', state);
-          if (state >= 2) { // HAVE_CURRENT_DATA or better
-            console.log('Audio has enough data to play, proceeding...');
-            resolve(true);
-          } else {
-            console.log('Audio not ready, but trying anyway...');
-            resolve(true);
-          }
-        }, isSafari.current ? 5000 : 3000); // Longer timeout for Safari
-
-        audio.addEventListener('canplaythrough', () => {
-          clearTimeout(timeout);
-          console.log('Audio ready to play through');
-          resolve(true);
-        }, { once: true });
-
-        audio.addEventListener('error', (e) => {
-          clearTimeout(timeout);
-          console.error('Audio loading error:', e, audio.error);
-          reject(new Error('Audio loading failed'));
-        }, { once: true });
-      });
-
-      // Try playback with Safari-specific error handling
-      console.log('Attempting audio playback...');
-      try {
-        if (isSafari.current) {
-          // For Safari, try to trigger user interaction handling
-          await Promise.race([
-            audio.play(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Safari playback timeout')), 3000))
-          ]);
-        } else {
-          await audio.play();
+      // For Safari, we need to handle audio differently
+      if (isSafari.current && !isIOS.current) {
+        console.log('Safari desktop playback...');
+        try {
+          // Create audio context first
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          const audioCtx = new AudioContext();
+          
+          // Fetch the audio file
+          const response = await fetch(audioUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          
+          // Create audio source
+          const audioSource = audioCtx.createBufferSource();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          audioSource.buffer = audioBuffer;
+          
+          // Connect to destination (speakers)
+          audioSource.connect(audioCtx.destination);
+          
+          // Update UI
+          setMessages(prev => prev.map((msg, idx) => ({
+            ...msg,
+            isPlaying: idx === messageIndex
+          })));
+          setAudioPlaying(audioUrl);
+          
+          // Play and handle completion
+          audioSource.start(0);
+          audioSource.onended = () => {
+            console.log('Safari audio playback completed');
+            setAudioPlaying(null);
+            setMessages(prev => prev.map(msg => ({
+              ...msg,
+              isPlaying: false
+            })));
+          };
+          
+          console.log('Safari audio playback started');
+        } catch (error) {
+          console.error('Safari audio playback error:', error);
+          throw error;
         }
-        console.log('Audio playback successful');
-      } catch (error) {
-        console.error('Playback error:', error);
-        throw error;
-      }
+      } else {
+        // Non-Safari browsers use standard Audio API
+        console.log('Standard audio playback...');
+        const audio = new Audio(audioUrl);
+        
+        // Mobile specific settings
+        if (isIOS.current || isMobileDevice) {
+          audio.preload = 'auto';
+          (audio as any).playsinline = true;
+          (audio as any).webkitPlaysinline = true;
+          audio.setAttribute('webkit-playsinline', 'true');
+          audio.volume = 1.0;
+        }
 
-      // Handle playback completion
-      audio.onended = () => {
-        console.log('Audio playback completed');
-        setAudioPlaying(null);
-        setMessages(prev => prev.map(msg => ({
+        // Update UI before attempting playback
+        setMessages(prev => prev.map((msg, idx) => ({
           ...msg,
-          isPlaying: false
+          isPlaying: idx === messageIndex
         })));
-      };
+        
+        setAudioPlaying(audioUrl);
+
+        // Set up event listeners
+        audio.addEventListener('loadstart', () => console.log('Audio loading started'));
+        audio.addEventListener('loadedmetadata', () => console.log('Audio metadata loaded'));
+        audio.addEventListener('canplay', () => console.log('Audio can start playing'));
+        audio.addEventListener('playing', () => console.log('Audio playback started'));
+        audio.addEventListener('error', (e) => console.error('Audio error:', e));
+
+        try {
+          await audio.play();
+          console.log('Audio playback successful');
+        } catch (error) {
+          console.error('Audio playback failed:', error);
+          throw error;
+        }
+
+        // Handle playback completion
+        audio.onended = () => {
+          console.log('Audio playback completed');
+          setAudioPlaying(null);
+          setMessages(prev => prev.map(msg => ({
+            ...msg,
+            isPlaying: false
+          })));
+        };
+      }
 
     } catch (error) {
       console.error('Audio playback error:', error);
@@ -717,12 +715,13 @@ export default function Home() {
       
       // Show platform-specific error message
       if (isSafari.current) {
-        console.log('Showing Safari-specific error message');
-        alert('Audio playback failed in Safari. Try clicking the play button or check your audio settings.');
+        alert('Audio playback failed. Please ensure your Safari settings allow audio playback.');
       } else if (isIOS.current || isMobileDevice) {
-        console.log('Showing mobile-specific error message');
         alert('Audio playback failed. Try tapping the play button or check if your device is in silent mode.');
       }
+    } finally {
+      // Ensure processing state is cleared
+      setIsProcessing(false);
     }
   };
 
