@@ -142,6 +142,9 @@ export default function Home() {
     'Other'
   ];
 
+  // Add ref for current audio element
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
   // Detect mobile device on component mount
   useEffect(() => {
     const checkMobile = () => {
@@ -472,6 +475,12 @@ export default function Home() {
           });
 
           if (!chatResponse.ok) {
+            const errorText = await chatResponse.text();
+            console.error('Chat API error:', {
+              status: chatResponse.status,
+              statusText: chatResponse.statusText,
+              error: errorText
+            });
             throw new Error('Failed to get AI response');
           }
 
@@ -493,20 +502,12 @@ export default function Home() {
               body: JSON.stringify({ 
                 text: aiResponse, 
                 level,
-                browser: isSafari.current ? 'safari' : 'other'  // Add browser info
+                browser: isSafari.current ? 'safari' : 'other'
               }),
               signal: ttsController.signal
             });
 
             if (!ttsResponse.ok) {
-              // Add the AI message even if TTS fails
-              setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: aiResponse,
-                timestamp: new Date(),
-                isPlaying: false
-              } as Message]);
-              setIsProcessing(false);
               throw new Error('Failed to convert text to speech');
             }
 
@@ -514,35 +515,25 @@ export default function Home() {
             console.log('Text-to-speech succeeded, blob type:', audioBlob.type);
 
             if (audioBlob.size === 0) {
-              // Add the AI message even if audio is empty
-              setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: aiResponse,
-                timestamp: new Date(),
-                isPlaying: false
-              } as Message]);
-              setIsProcessing(false);
               throw new Error('Received empty audio response');
             }
 
-            // Create audio URL with proper type for Safari
+            // Create audio URL
             const audioUrl = URL.createObjectURL(
               isSafari.current && !isIOS.current
-                ? new Blob([audioBlob], { type: 'audio/mpeg' })  // Use MP3 for Safari
+                ? new Blob([audioBlob], { type: 'audio/mpeg' })
                 : audioBlob
             );
 
-            // Add AI message with audio
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              content: aiResponse,
-              timestamp: new Date(),
-              audioUrl,
-              isPlaying: false
-            } as Message]);
-
-            // Clear processing state before attempting playback
-            setIsProcessing(false);
+            // Update message with audio URL
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage && lastMessage.role === 'assistant') {
+                lastMessage.audioUrl = audioUrl;
+              }
+              return newMessages;
+            });
 
             // Try to play audio
             if (!isIOS.current && !isMobileDevice) {
@@ -550,13 +541,12 @@ export default function Home() {
                 await handleAudioPlayback(audioUrl, messages.length);
               } catch (error) {
                 console.warn('Desktop audio playback failed:', error);
-                // Continue since message is already added
               }
             }
 
           } catch (error) {
             console.error('TTS error:', error);
-            // Don't rethrow - we've already handled the error by showing the message
+            throw error;
           } finally {
             clearTimeout(ttsTimeout);
             setIsProcessing(false);
@@ -580,7 +570,6 @@ export default function Home() {
       console.error('Processing error:', error);
       setIsProcessing(false);
       
-      // Show a simple error message
       let userMessage = 'An error occurred. Please try again.';
       
       if (error.name === 'AbortError') {
@@ -663,47 +652,51 @@ export default function Home() {
 
   const targetLanguageData = getTargetLanguage();
 
-  // Modify the audio playback section in handleAudioSubmission
+  // Update handleAudioPlayback function
   const handleAudioPlayback = async (audioUrl: string, messageIndex: number) => {
     try {
       console.log('Starting audio playback...');
       
-      // Stop any currently playing audio
-      if (audioPlaying) {
-        console.log('Stopping previous audio...');
-        const oldAudio = new Audio(audioPlaying);
-        oldAudio.pause();
+      // If there's already an audio playing, stop it
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
         setAudioPlaying(null);
+        setMessages(prev => prev.map(msg => ({
+          ...msg,
+          isPlaying: false
+        })));
+      }
+
+      // If we're clicking on the currently playing audio, just stop it
+      if (audioPlaying === audioUrl) {
+        setAudioPlaying(null);
+        return;
       }
 
       // For Safari, we need to handle audio differently
       if (isSafari.current && !isIOS.current) {
         console.log('Safari desktop playback...');
         try {
-          // Create audio context first
           const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
           const audioCtx = new AudioContext();
           
-          // Fetch the audio file
           const response = await fetch(audioUrl);
           const arrayBuffer = await response.arrayBuffer();
           
-          // Create audio source
           const audioSource = audioCtx.createBufferSource();
           const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
           audioSource.buffer = audioBuffer;
           
-          // Connect to destination (speakers)
           audioSource.connect(audioCtx.destination);
           
-          // Update UI
           setMessages(prev => prev.map((msg, idx) => ({
             ...msg,
             isPlaying: idx === messageIndex
           })));
           setAudioPlaying(audioUrl);
           
-          // Play and handle completion
           audioSource.start(0);
           audioSource.onended = () => {
             console.log('Safari audio playback completed');
@@ -723,6 +716,7 @@ export default function Home() {
         // Non-Safari browsers use standard Audio API
         console.log('Standard audio playback...');
         const audio = new Audio(audioUrl);
+        currentAudioRef.current = audio;
         
         // Mobile specific settings
         if (isIOS.current || isMobileDevice) {
@@ -747,6 +741,15 @@ export default function Home() {
         audio.addEventListener('canplay', () => console.log('Audio can start playing'));
         audio.addEventListener('playing', () => console.log('Audio playback started'));
         audio.addEventListener('error', (e) => console.error('Audio error:', e));
+        audio.addEventListener('ended', () => {
+          console.log('Audio playback completed');
+          currentAudioRef.current = null;
+          setAudioPlaying(null);
+          setMessages(prev => prev.map(msg => ({
+            ...msg,
+            isPlaying: false
+          })));
+        });
 
         try {
           await audio.play();
@@ -755,34 +758,22 @@ export default function Home() {
           console.error('Audio playback failed:', error);
           throw error;
         }
-
-        // Handle playback completion
-        audio.onended = () => {
-          console.log('Audio playback completed');
-          setAudioPlaying(null);
-          setMessages(prev => prev.map(msg => ({
-            ...msg,
-            isPlaying: false
-          })));
-        };
       }
-
     } catch (error) {
       console.error('Audio playback error:', error);
+      currentAudioRef.current = null;
       setAudioPlaying(null);
       setMessages(prev => prev.map(msg => ({
         ...msg,
         isPlaying: false
       })));
       
-      // Show platform-specific error message
       if (isSafari.current) {
         alert('Audio playback failed. Please ensure your Safari settings allow audio playback.');
       } else if (isIOS.current || isMobileDevice) {
         alert('Audio playback failed. Try tapping the play button or check if your device is in silent mode.');
       }
     } finally {
-      // Ensure processing state is cleared
       setIsProcessing(false);
     }
   };
@@ -1245,16 +1236,6 @@ export default function Home() {
                     <Typography variant="h5">
                       Conversation
                     </Typography>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => {
-                        setShowConversation(false);
-                        setMessages([]);
-                      }}
-                    >
-                      Stop Conversation
-                    </Button>
                   </Box>
 
                   {/* Messages area */}
@@ -1322,150 +1303,169 @@ export default function Home() {
 
                   {/* Recording controls */}
                   <Box sx={{ 
-                    display: 'flex', 
-                    gap: 1, 
+                    display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    mt: 'auto',
-                    justifyContent: 'center'
+                    gap: 2,
+                    mt: 'auto'
                   }}>
-                    <IconButton 
-                      color={isRecording ? 'error' : 'primary'}
-                      onClick={toggleRecording}
-                      disabled={isProcessing}
-                      sx={{ 
-                        p: { xs: 1.5, sm: 2 },
-                        '& svg': {
-                          fontSize: { xs: '1.5rem', sm: '2rem' }
-                        }
-                      }}
-                    >
-                      {isRecording ? <StopIcon /> : <MicIcon />}
-                    </IconButton>
-                    {isProcessing && (
-                      <CircularProgress 
-                        size={24} 
+                    <Box sx={{ 
+                      display: 'flex', 
+                      gap: 1, 
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <IconButton 
+                        color={isRecording ? 'error' : 'primary'}
+                        onClick={toggleRecording}
+                        disabled={isProcessing}
                         sx={{ 
-                          ml: 1,
-                          color: 'primary.main'
-                        }} 
-                      />
-                    )}
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        fontSize: { xs: '0.85rem', sm: '0.9rem' },
-                        color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
-                      }}
-                    >
-                      {isProcessing
-                        ? 'Thinking...'
-                        : isRecording 
-                          ? 'Click to stop recording...' 
-                          : 'Click to start speaking'}
-                    </Typography>
-                    <Tooltip title="Get feedback on your conversation">
-                      <IconButton
-                        color="primary"
-                        onClick={async () => {
-                          try {
-                            setIsProcessing(true);
-                            // Get only user messages from the conversation
-                            const userMessages = messages
-                              .filter(m => m.role === 'user')
-                              .map(m => m.content)
-                              .join('\n');
-                            
-                            // Request feedback
-                            const feedbackResponse = await fetch('/api/chat', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                message: `Please analyze my responses and provide feedback on my language use${
-                                  conversationType === 'skill' 
-                                    ? ', especially regarding the target expressions'
-                                    : ', considering the professional context'
-                                }. Here are my responses:\n${userMessages}`,
-                                context: {
-                                  conversationType,
-                                  level,
-                                  ...(conversationType === 'skill' ? {
-                                    skill,
-                                    moduleId: selectedModule,
-                                    courseId: selectedCourse,
-                                    isFullModule: selectedCourse === `${selectedModule}_practice`,
-                                    moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
-                                  } : {
-                                    jobTitle,
-                                    customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
-                                    taskObjective,
-                                    customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
-                                    audience,
-                                    formality,
-                                    industry,
-                                    customIndustry: industry === 'Other' ? customIndustry : undefined,
-                                    feedbackStyle,
-                                    timeLimit
-                                  })
-                                }
-                              }),
-                            });
-
-                            if (!feedbackResponse.ok) throw new Error('Feedback request failed');
-                            const { response } = await feedbackResponse.json();
-
-                            // Add feedback as a new message
-                            setMessages(prev => [...prev, {
-                              role: 'assistant',
-                              content: response,
-                              timestamp: new Date(),
-                              isPlaying: false
-                            } as Message]);
-
-                            // Convert feedback to speech
-                            const ttsResponse = await fetch('/api/text-to-speech', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                text: response,
-                                level,
-                                browser: isSafari.current ? 'safari' : 'other'
-                              }),
-                            });
-
-                            if (!ttsResponse.ok) throw new Error('Text to speech failed');
-                            const audioBlob = await ttsResponse.blob();
-                            const audioUrl = URL.createObjectURL(
-                              isSafari.current && !isIOS.current
-                                ? new Blob([audioBlob], { type: 'audio/mpeg' })
-                                : audioBlob
-                            );
-
-                            // Update the message with audio
-                            setMessages(prev => {
-                              const newMessages = [...prev];
-                              newMessages[newMessages.length - 1].audioUrl = audioUrl;
-                              return newMessages;
-                            });
-
-                          } catch (error) {
-                            console.error('Error getting feedback:', error);
-                            alert('Error getting feedback. Please try again.');
-                          } finally {
-                            setIsProcessing(false);
-                          }
-                        }}
-                        disabled={!messages.length || isProcessing}
-                        sx={{ 
-                          ml: 2,
                           p: { xs: 1.5, sm: 2 },
                           '& svg': {
                             fontSize: { xs: '1.5rem', sm: '2rem' }
                           }
                         }}
                       >
-                        <FeedbackIcon />
+                        {isRecording ? <StopIcon /> : <MicIcon />}
                       </IconButton>
-                    </Tooltip>
+                      {isProcessing && (
+                        <CircularProgress 
+                          size={24} 
+                          sx={{ 
+                            ml: 1,
+                            color: 'primary.main'
+                          }} 
+                        />
+                      )}
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: { xs: '0.85rem', sm: '0.9rem' },
+                          color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
+                        }}
+                      >
+                        {isProcessing
+                          ? 'Thinking...'
+                          : isRecording 
+                            ? 'Click to stop recording...' 
+                            : 'Click to start speaking'}
+                      </Typography>
+                      <Tooltip title="Get feedback on your conversation">
+                        <IconButton
+                          color="primary"
+                          onClick={async () => {
+                            try {
+                              setIsProcessing(true);
+                              // Get only user messages from the conversation
+                              const userMessages = messages
+                                .filter(m => m.role === 'user')
+                                .map(m => m.content)
+                                .join('\n');
+                              
+                              // Request feedback
+                              const feedbackResponse = await fetch('/api/chat', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  message: `Please analyze my responses and provide feedback on my language use${
+                                    conversationType === 'skill' 
+                                      ? ', especially regarding the target expressions'
+                                      : ', considering the professional context'
+                                  }. Here are my responses:\n${userMessages}`,
+                                  context: {
+                                    conversationType,
+                                    level,
+                                    ...(conversationType === 'skill' ? {
+                                      skill,
+                                      moduleId: selectedModule,
+                                      courseId: selectedCourse,
+                                      isFullModule: selectedCourse === `${selectedModule}_practice`,
+                                      moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                                    } : {
+                                      jobTitle,
+                                      customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
+                                      taskObjective,
+                                      customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
+                                      audience,
+                                      formality,
+                                      industry,
+                                      customIndustry: industry === 'Other' ? customIndustry : undefined,
+                                      feedbackStyle,
+                                      timeLimit
+                                    })
+                                  }
+                                }),
+                              });
+
+                              if (!feedbackResponse.ok) throw new Error('Feedback request failed');
+                              const { response } = await feedbackResponse.json();
+
+                              // Add feedback as a new message
+                              setMessages(prev => [...prev, {
+                                role: 'assistant',
+                                content: response,
+                                timestamp: new Date(),
+                                isPlaying: false
+                              } as Message]);
+
+                              // Convert feedback to speech
+                              const ttsResponse = await fetch('/api/text-to-speech', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  text: response,
+                                  level,
+                                  browser: isSafari.current ? 'safari' : 'other'
+                                }),
+                              });
+
+                              if (!ttsResponse.ok) throw new Error('Text to speech failed');
+                              const audioBlob = await ttsResponse.blob();
+                              const audioUrl = URL.createObjectURL(
+                                isSafari.current && !isIOS.current
+                                  ? new Blob([audioBlob], { type: 'audio/mpeg' })
+                                  : audioBlob
+                              );
+
+                              // Update the message with audio
+                              setMessages(prev => {
+                                const newMessages = [...prev];
+                                newMessages[newMessages.length - 1].audioUrl = audioUrl;
+                                return newMessages;
+                              });
+
+                            } catch (error) {
+                              console.error('Error getting feedback:', error);
+                              alert('Error getting feedback. Please try again.');
+                            } finally {
+                              setIsProcessing(false);
+                            }
+                          }}
+                          disabled={!messages.length || isProcessing}
+                          sx={{ 
+                            ml: 2,
+                            p: { xs: 1.5, sm: 2 },
+                            '& svg': {
+                              fontSize: { xs: '1.5rem', sm: '2rem' }
+                            }
+                          }}
+                        >
+                          <FeedbackIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => {
+                        setShowConversation(false);
+                        setMessages([]);
+                      }}
+                      sx={{ mt: 1 }}
+                    >
+                      Stop Conversation
+                    </Button>
                   </Box>
                 </Paper>
               </Grid>
