@@ -94,6 +94,54 @@ export default function Home() {
   // Add iOS detection
   const isIOS = useRef(false);
 
+  // Add new state for conversation type
+  const [conversationType, setConversationType] = useState<'skill' | 'open' | null>(null);
+  const [customTaskObjective, setCustomTaskObjective] = useState('');
+  const [customIndustry, setCustomIndustry] = useState('');
+
+  // Add new state for custom job title
+  const [customJobTitle, setCustomJobTitle] = useState('');
+
+  // Predefined options
+  const TASK_OBJECTIVES = [
+    'Job Interview',
+    'Business Meeting',
+    'Client Presentation',
+    'Small Talk',
+    'Networking',
+    'Customer Service',
+    'Problem Solving',
+    'Team Discussion',
+    'Other'
+  ];
+
+  const INDUSTRIES = [
+    'Technology',
+    'Healthcare',
+    'Finance',
+    'Education',
+    'Manufacturing',
+    'Retail',
+    'Hospitality',
+    'Professional Services',
+    'Other'
+  ];
+
+  // Add job titles array
+  const JOB_TITLES = [
+    'Sales Manager',
+    'Marketing Director',
+    'Software Engineer',
+    'Project Manager',
+    'Business Analyst',
+    'HR Manager',
+    'Financial Advisor',
+    'Operations Manager',
+    'Product Manager',
+    'Account Executive',
+    'Other'
+  ];
+
   // Detect mobile device on component mount
   useEffect(() => {
     const checkMobile = () => {
@@ -398,12 +446,26 @@ export default function Home() {
             body: JSON.stringify({
               message: text,
               context: {
-                skill,
+                conversationType,
                 level,
-                moduleId: selectedModule,
-                courseId: selectedCourse,
-                isFullModule: selectedCourse === `${selectedModule}_practice`,
-                moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                ...(conversationType === 'skill' ? {
+                  skill,
+                  moduleId: selectedModule,
+                  courseId: selectedCourse,
+                  isFullModule: selectedCourse === `${selectedModule}_practice`,
+                  moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                } : {
+                  jobTitle,
+                  customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
+                  taskObjective,
+                  customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
+                  audience,
+                  formality,
+                  industry,
+                  customIndustry: industry === 'Other' ? customIndustry : undefined,
+                  feedbackStyle,
+                  timeLimit
+                })
               }
             }),
             signal: chatController.signal
@@ -730,129 +792,223 @@ export default function Home() {
       <Box sx={{ my: 2, px: { xs: 1, sm: 2 } }}>
         <Fade in={!showConversation}>
           <Box sx={{ display: showConversation ? 'none' : 'block' }}>
-            <Paper elevation={3} sx={{ p: { xs: 2, sm: 4 } }}>
-              <Typography variant="h5" gutterBottom>
-                Practice Settings
-              </Typography>
+            <Typography variant="h5" align="center" gutterBottom>
+              Please select the type of conversation
+            </Typography>
 
-              {/* Required Selections */}
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Skill</InputLabel>
-                    <Select
-                      value={skill}
-                      label="Skill"
-                      onChange={(e: SelectChangeEvent<string>) => setSkill(e.target.value)}
-                    >
-                      {SKILLS.map((skill) => (
-                        <MenuItem key={skill} value={skill}>
-                          {skill}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+            {!conversationType && (
+              <Grid container spacing={2} justifyContent="center">
+                <Grid item xs={12} md={6}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    size="large"
+                    onClick={() => setConversationType('skill')}
+                  >
+                    Skill Express Conversation
+                  </Button>
                 </Grid>
-
-                <Grid item xs={12} sm={6} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Speaking Level</InputLabel>
-                    <Select
-                      value={level}
-                      label="Speaking Level"
-                      onChange={(e: SelectChangeEvent<string>) => setLevel(e.target.value)}
-                    >
-                      {LEVELS.map((level) => (
-                        <MenuItem key={level} value={level}>
-                          {level}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                <Grid item xs={12} md={6}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    size="large"
+                    onClick={() => setConversationType('open')}
+                  >
+                    Open Conversation
+                  </Button>
                 </Grid>
+              </Grid>
+            )}
 
-                <Grid item xs={12} sm={6} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Module</InputLabel>
-                    <Select
-                      value={selectedModule}
-                      label="Module"
-                      onChange={(e: SelectChangeEvent<string>) => {
-                        setSelectedModule(e.target.value);
-                        setSelectedCourse(''); // Reset course when module changes
-                      }}
-                      disabled={!skill || !level}
-                    >
-                      {getAvailableModules().map((module, index) => (
-                        <MenuItem 
-                          key={module.id} 
-                          value={module.id}
-                          sx={{
-                            whiteSpace: 'normal',
-                            py: 1
-                          }}
+            {conversationType && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  startIcon={<ArrowBackIcon />}
+                  onClick={() => {
+                    setConversationType(null);
+                    // Reset all form fields
+                    setSkill('');
+                    setLevel('');
+                    setSelectedModule('');
+                    setSelectedCourse('');
+                    setJobTitle('');
+                    setCustomJobTitle('');
+                    setTaskObjective('');
+                    setCustomTaskObjective('');
+                    setAudience('');
+                    setFormality('');
+                    setSetting('');
+                    setIndustry('');
+                    setCustomIndustry('');
+                    setFeedbackStyle('');
+                    setTimeLimit('');
+                  }}
+                >
+                  Back to Conversation Type
+                </Button>
+              </Box>
+            )}
+
+            <Paper elevation={3} sx={{ p: { xs: 2, sm: 4 }, mt: 2 }}>
+              {conversationType === 'skill' && (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Skill Express Practice Settings
+                  </Typography>
+                  {/* Existing Skill Express fields */}
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Skill</InputLabel>
+                        <Select
+                          value={skill}
+                          label="Skill"
+                          onChange={(e) => setSkill(e.target.value)}
                         >
-                          <Typography>Module {index + 1}: {module.title}</Typography>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+                          {SKILLS.map((s) => (
+                            <MenuItem key={s} value={s}>
+                              {s}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControl fullWidth>
+                        <InputLabel>Speaking Level</InputLabel>
+                        <Select
+                          value={level}
+                          label="Speaking Level"
+                          onChange={(e: SelectChangeEvent<string>) => setLevel(e.target.value)}
+                        >
+                          {LEVELS.map((level) => (
+                            <MenuItem key={level} value={level}>
+                              {level}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControl fullWidth>
+                        <InputLabel>Module</InputLabel>
+                        <Select
+                          value={selectedModule}
+                          label="Module"
+                          onChange={(e: SelectChangeEvent<string>) => {
+                            setSelectedModule(e.target.value);
+                            setSelectedCourse(''); // Reset course when module changes
+                          }}
+                          disabled={!skill || !level}
+                        >
+                          {getAvailableModules().map((module, index) => (
+                            <MenuItem 
+                              key={module.id} 
+                              value={module.id}
+                              sx={{
+                                whiteSpace: 'normal',
+                                py: 1
+                              }}
+                            >
+                              <Typography>Module {index + 1}: {module.title}</Typography>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControl fullWidth>
+                        <InputLabel>Course</InputLabel>
+                        <Select
+                          value={selectedCourse}
+                          label="Course"
+                          onChange={(e: SelectChangeEvent<string>) => {
+                            setSelectedCourse(e.target.value);
+                          }}
+                          disabled={!selectedModule}
+                        >
+                          {/* Show individual courses */}
+                          {getAvailableCourses().map((course, index) => (
+                            <MenuItem 
+                              key={course.id} 
+                              value={course.id}
+                              sx={{
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
+                                whiteSpace: 'normal',
+                                py: 1,
+                                '& .description': {
+                                  fontSize: '0.8rem',
+                                  color: 'text.secondary',
+                                  mt: 0.5
+                                }
+                              }}
+                            >
+                              <Typography>Course {index + 1}: {course.title}</Typography>
+                              <Typography className="description">
+                                {course.description}
+                              </Typography>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </>
+              )}
 
-                <Grid item xs={12} sm={6} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Course</InputLabel>
-                    <Select
-                      value={selectedCourse}
-                      label="Course"
-                      onChange={(e: SelectChangeEvent<string>) => {
-                        setSelectedCourse(e.target.value);
-                      }}
-                      disabled={!selectedModule}
-                    >
-                      {/* Show individual courses */}
-                      {getAvailableCourses().map((course, index) => (
-                        <MenuItem 
-                          key={course.id} 
-                          value={course.id}
-                          sx={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-start',
-                            whiteSpace: 'normal',
-                            py: 1,
-                            '& .description': {
-                              fontSize: '0.8rem',
-                              color: 'text.secondary',
-                              mt: 0.5
+              {conversationType === 'open' && (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Open Conversation Settings
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Speaking Level</InputLabel>
+                        <Select
+                          value={level}
+                          label="Speaking Level"
+                          onChange={(e) => setLevel(e.target.value)}
+                        >
+                          {LEVELS.map((l) => (
+                            <MenuItem key={l} value={l}>
+                              {l}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Job Title</InputLabel>
+                        <Select
+                          value={jobTitle}
+                          label="Job Title"
+                          onChange={(e) => {
+                            setJobTitle(e.target.value);
+                            if (e.target.value !== 'Other') {
+                              setCustomJobTitle('');
                             }
                           }}
                         >
-                          <Typography>Course {index + 1}: {course.title}</Typography>
-                          <Typography className="description">
-                            {course.description}
-                          </Typography>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-
-              {/* Optional Settings */}
-              <Accordion sx={{ mt: 3 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Customize More Options</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Job Title"
-                        placeholder="Enter your job title"
-                        value={jobTitle}
-                        onChange={(e) => setJobTitle(e.target.value)}
-                      />
+                          {JOB_TITLES.map((title) => (
+                            <MenuItem key={title} value={title}>
+                              {title}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {jobTitle === 'Other' && (
+                        <TextField
+                          fullWidth
+                          label="Custom Job Title"
+                          value={customJobTitle}
+                          onChange={(e) => setCustomJobTitle(e.target.value)}
+                          sx={{ mt: 1 }}
+                        />
+                      )}
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth>
@@ -860,14 +1016,59 @@ export default function Home() {
                         <Select
                           value={taskObjective}
                           label="Task/Objective"
-                          onChange={(e) => setTaskObjective(e.target.value)}
+                          onChange={(e) => {
+                            setTaskObjective(e.target.value);
+                            if (e.target.value !== 'Other') {
+                              setCustomTaskObjective('');
+                            }
+                          }}
                         >
-                          <MenuItem value="">None</MenuItem>
-                          <MenuItem value="presentation">Make a presentation</MenuItem>
-                          <MenuItem value="complaint">Handle a complaint</MenuItem>
-                          <MenuItem value="negotiation">Lead a negotiation</MenuItem>
+                          {TASK_OBJECTIVES.map((task) => (
+                            <MenuItem key={task} value={task}>
+                              {task}
+                            </MenuItem>
+                          ))}
                         </Select>
                       </FormControl>
+                      {taskObjective === 'Other' && (
+                        <TextField
+                          fullWidth
+                          label="Custom Task/Objective"
+                          value={customTaskObjective}
+                          onChange={(e) => setCustomTaskObjective(e.target.value)}
+                          sx={{ mt: 1 }}
+                        />
+                      )}
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Industry/Sector</InputLabel>
+                        <Select
+                          value={industry}
+                          label="Industry/Sector"
+                          onChange={(e) => {
+                            setIndustry(e.target.value);
+                            if (e.target.value !== 'Other') {
+                              setCustomIndustry('');
+                            }
+                          }}
+                        >
+                          {INDUSTRIES.map((ind) => (
+                            <MenuItem key={ind} value={ind}>
+                              {ind}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {industry === 'Other' && (
+                        <TextField
+                          fullWidth
+                          label="Custom Industry/Sector"
+                          value={customIndustry}
+                          onChange={(e) => setCustomIndustry(e.target.value)}
+                          sx={{ mt: 1 }}
+                        />
+                      )}
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth>
@@ -878,56 +1079,24 @@ export default function Home() {
                           onChange={(e) => setAudience(e.target.value)}
                         >
                           <MenuItem value="">None</MenuItem>
-                          <MenuItem value="boss">Boss</MenuItem>
-                          <MenuItem value="ceo">CEO</MenuItem>
                           <MenuItem value="clients">Clients</MenuItem>
                           <MenuItem value="colleagues">Colleagues</MenuItem>
+                          <MenuItem value="superiors">Superiors</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <FormControl fullWidth>
-                        <InputLabel>Formality/Tone</InputLabel>
+                        <InputLabel>Formality</InputLabel>
                         <Select
                           value={formality}
-                          label="Formality/Tone"
+                          label="Formality"
                           onChange={(e) => setFormality(e.target.value)}
                         >
                           <MenuItem value="">None</MenuItem>
                           <MenuItem value="formal">Formal</MenuItem>
-                          <MenuItem value="friendly">Friendly</MenuItem>
-                          <MenuItem value="diplomatic">Diplomatic</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <FormControl fullWidth>
-                        <InputLabel>Setting</InputLabel>
-                        <Select
-                          value={setting}
-                          label="Setting"
-                          onChange={(e) => setSetting(e.target.value)}
-                        >
-                          <MenuItem value="">None</MenuItem>
-                          <MenuItem value="face-to-face">Face-to-face</MenuItem>
-                          <MenuItem value="phone">Phone call</MenuItem>
-                          <MenuItem value="tradeshow">Trade show</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <FormControl fullWidth>
-                        <InputLabel>Industry/Sector</InputLabel>
-                        <Select
-                          value={industry}
-                          label="Industry/Sector"
-                          onChange={(e) => setIndustry(e.target.value)}
-                        >
-                          <MenuItem value="">None</MenuItem>
-                          <MenuItem value="retail">Retail</MenuItem>
-                          <MenuItem value="tech">Technology</MenuItem>
-                          <MenuItem value="education">Education</MenuItem>
-                          <MenuItem value="healthcare">Healthcare</MenuItem>
+                          <MenuItem value="semiformal">Semi-formal</MenuItem>
+                          <MenuItem value="informal">Informal</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
@@ -964,8 +1133,8 @@ export default function Home() {
                       </FormControl>
                     </Grid>
                   </Grid>
-                </AccordionDetails>
-              </Accordion>
+                </>
+              )}
 
               {/* Start Conversation Button */}
               <Button
@@ -975,7 +1144,11 @@ export default function Home() {
                 size="large"
                 sx={{ mt: 3 }}
                 onClick={() => setShowConversation(true)}
-                disabled={!skill || !level || !selectedCourse}
+                disabled={
+                  conversationType === 'skill'
+                    ? !skill || !level || !selectedCourse
+                    : !level || !(taskObjective && (taskObjective !== 'Other' || customTaskObjective)) || !(industry && (industry !== 'Other' || customIndustry))
+                }
               >
                 Start Conversation
               </Button>
@@ -986,76 +1159,78 @@ export default function Home() {
         <Fade in={showConversation}>
           <Box sx={{ display: showConversation ? 'block' : 'none' }}>
             <Grid container spacing={2}>
-              {/* Target Language */}
-              <Grid item xs={12} md={6}>
-                <Paper 
-                  elevation={3} 
-                  sx={{ 
-                    p: { xs: 2, sm: 4 }, 
-                    height: '100%',
-                    minHeight: { xs: '300px', sm: '400px' }
-                  }}
-                >
-                  <Typography variant="h5" gutterBottom>
-                    Target Language
-                  </Typography>
+              {/* Target Language - Only show for Skill Express */}
+              {conversationType === 'skill' && (
+                <Grid item xs={12} md={6}>
+                  <Paper 
+                    elevation={3} 
+                    sx={{ 
+                      p: { xs: 2, sm: 4 }, 
+                      height: '100%',
+                      minHeight: { xs: '300px', sm: '400px' }
+                    }}
+                  >
+                    <Typography variant="h5" gutterBottom>
+                      Target Language
+                    </Typography>
 
-                  {/* Target Language List */}
-                  <List sx={{ 
-                    overflowY: 'auto', 
-                    maxHeight: { xs: '250px', sm: '350px' }
-                  }}>
-                    {!selectedModule ? (
-                      <ListItem>
-                        <ListItemText primary="Please select a module" sx={{ color: 'text.secondary' }} />
-                      </ListItem>
-                    ) : !selectedCourse ? (
-                      <ListItem>
-                        <ListItemText primary="Please select a course" sx={{ color: 'text.secondary' }} />
-                      </ListItem>
-                    ) : targetLanguageData.length === 0 ? (
-                      <ListItem>
-                        <ListItemText primary="No target language available" sx={{ color: 'text.secondary' }} />
-                      </ListItem>
-                    ) : (
-                      targetLanguageData.map((courseData) => (
-                        courseData.targetLanguage.map((category, catIndex) => (
-                          <Box key={catIndex} sx={{ mb: 2 }}>
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: 'bold',
-                                color: 'text.primary',
-                                mb: 1
-                              }}
-                            >
-                              {category.category}
-                            </Typography>
-                            <List sx={{ pl: 2 }}>
-                              {category.expressions.map((expression, exprIndex) => (
-                                <ListItem key={exprIndex} dense>
-                                  <ListItemText
-                                    primary={expression}
-                                    sx={{
-                                      '& .MuiListItemText-primary': {
-                                        fontSize: '0.9rem',
-                                        color: 'text.secondary'
-                                      }
-                                    }}
-                                  />
-                                </ListItem>
-                              ))}
-                            </List>
-                          </Box>
+                    {/* Target Language List */}
+                    <List sx={{ 
+                      overflowY: 'auto', 
+                      maxHeight: { xs: '250px', sm: '350px' }
+                    }}>
+                      {!selectedModule ? (
+                        <ListItem>
+                          <ListItemText primary="Please select a module" sx={{ color: 'text.secondary' }} />
+                        </ListItem>
+                      ) : !selectedCourse ? (
+                        <ListItem>
+                          <ListItemText primary="Please select a course" sx={{ color: 'text.secondary' }} />
+                        </ListItem>
+                      ) : targetLanguageData.length === 0 ? (
+                        <ListItem>
+                          <ListItemText primary="No target language available" sx={{ color: 'text.secondary' }} />
+                        </ListItem>
+                      ) : (
+                        targetLanguageData.map((courseData) => (
+                          courseData.targetLanguage.map((category, catIndex) => (
+                            <Box key={catIndex} sx={{ mb: 2 }}>
+                              <Typography
+                                variant="subtitle1"
+                                sx={{
+                                  fontWeight: 'bold',
+                                  color: 'text.primary',
+                                  mb: 1
+                                }}
+                              >
+                                {category.category}
+                              </Typography>
+                              <List sx={{ pl: 2 }}>
+                                {category.expressions.map((expression, exprIndex) => (
+                                  <ListItem key={exprIndex} dense>
+                                    <ListItemText
+                                      primary={expression}
+                                      sx={{
+                                        '& .MuiListItemText-primary': {
+                                          fontSize: '0.9rem',
+                                          color: 'text.secondary'
+                                        }
+                                      }}
+                                    />
+                                  </ListItem>
+                                ))}
+                              </List>
+                            </Box>
+                          ))
                         ))
-                      ))
-                    )}
-                  </List>
-                </Paper>
-              </Grid>
+                      )}
+                    </List>
+                  </Paper>
+                </Grid>
+              )}
 
-              {/* Conversation */}
-              <Grid item xs={12} md={6}>
+              {/* Conversation Area */}
+              <Grid item xs={12} md={conversationType === 'skill' ? 6 : 12}>
                 <Paper 
                   elevation={3} 
                   sx={{ 
@@ -1066,10 +1241,22 @@ export default function Home() {
                     flexDirection: 'column'
                   }}
                 >
-                  <Typography variant="h5" gutterBottom>
-                    Conversation
-                  </Typography>
-                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h5">
+                      Conversation
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => {
+                        setShowConversation(false);
+                        setMessages([]);
+                      }}
+                    >
+                      Stop Conversation
+                    </Button>
+                  </Box>
+
                   {/* Messages area */}
                   <Box sx={{ 
                     flexGrow: 1, 
@@ -1144,7 +1331,7 @@ export default function Home() {
                     <IconButton 
                       color={isRecording ? 'error' : 'primary'}
                       onClick={toggleRecording}
-                      disabled={!skill || !level || !selectedCourse || isProcessing}
+                      disabled={isProcessing}
                       sx={{ 
                         p: { xs: 1.5, sm: 2 },
                         '& svg': {
@@ -1170,13 +1357,11 @@ export default function Home() {
                         color: isRecording ? 'error.main' : isProcessing ? 'primary.main' : 'text.secondary'
                       }}
                     >
-                      {!skill || !level || !selectedCourse 
-                        ? 'Please select skill, level, and course to start'
-                        : isProcessing
-                          ? 'Thinking...'
-                          : isRecording 
-                            ? 'Click to stop recording...' 
-                            : 'Click to start speaking'}
+                      {isProcessing
+                        ? 'Thinking...'
+                        : isRecording 
+                          ? 'Click to stop recording...' 
+                          : 'Click to start speaking'}
                     </Typography>
                     <Tooltip title="Get feedback on your conversation">
                       <IconButton
@@ -1195,14 +1380,32 @@ export default function Home() {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
-                                message: `Absolutely, some useful feedback is: [Analyze my use of target language expressions in this conversation and provide specific examples of what I did well and what expressions I could add. Here are my responses so far:]\n${userMessages}`,
-                                context: { 
-                                  skill, 
-                                  level, 
-                                  moduleId: selectedModule,
-                                  courseId: selectedCourse,
-                                  isFullModule: selectedCourse === `${selectedModule}_practice`,
-                                  moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                                message: `Please analyze my responses and provide feedback on my language use${
+                                  conversationType === 'skill' 
+                                    ? ', especially regarding the target expressions'
+                                    : ', considering the professional context'
+                                }. Here are my responses:\n${userMessages}`,
+                                context: {
+                                  conversationType,
+                                  level,
+                                  ...(conversationType === 'skill' ? {
+                                    skill,
+                                    moduleId: selectedModule,
+                                    courseId: selectedCourse,
+                                    isFullModule: selectedCourse === `${selectedModule}_practice`,
+                                    moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+                                  } : {
+                                    jobTitle,
+                                    customJobTitle: jobTitle === 'Other' ? customJobTitle : undefined,
+                                    taskObjective,
+                                    customTaskObjective: taskObjective === 'Other' ? customTaskObjective : undefined,
+                                    audience,
+                                    formality,
+                                    industry,
+                                    customIndustry: industry === 'Other' ? customIndustry : undefined,
+                                    feedbackStyle,
+                                    timeLimit
+                                  })
                                 }
                               }),
                             });
@@ -1214,7 +1417,8 @@ export default function Home() {
                             setMessages(prev => [...prev, {
                               role: 'assistant',
                               content: response,
-                              timestamp: new Date()
+                              timestamp: new Date(),
+                              isPlaying: false
                             } as Message]);
 
                             // Convert feedback to speech
@@ -1223,17 +1427,25 @@ export default function Home() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 text: response,
-                                level
+                                level,
+                                browser: isSafari.current ? 'safari' : 'other'
                               }),
                             });
 
                             if (!ttsResponse.ok) throw new Error('Text to speech failed');
                             const audioBlob = await ttsResponse.blob();
-                            const audioUrl = URL.createObjectURL(audioBlob);
+                            const audioUrl = URL.createObjectURL(
+                              isSafari.current && !isIOS.current
+                                ? new Blob([audioBlob], { type: 'audio/mpeg' })
+                                : audioBlob
+                            );
 
-                            // Auto-play the audio response
-                            const audio = new Audio(audioUrl);
-                            audio.play();
+                            // Update the message with audio
+                            setMessages(prev => {
+                              const newMessages = [...prev];
+                              newMessages[newMessages.length - 1].audioUrl = audioUrl;
+                              return newMessages;
+                            });
 
                           } catch (error) {
                             console.error('Error getting feedback:', error);
@@ -1256,19 +1468,6 @@ export default function Home() {
                     </Tooltip>
                   </Box>
                 </Paper>
-              </Grid>
-
-              {/* Back to Settings Button */}
-              <Grid item xs={12}>
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<ArrowBackIcon />}
-                  onClick={() => setShowConversation(false)}
-                  sx={{ mt: 2 }}
-                >
-                  Back to Settings
-                </Button>
               </Grid>
             </Grid>
           </Box>
