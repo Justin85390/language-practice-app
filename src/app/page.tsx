@@ -166,107 +166,120 @@ export default function Home() {
 
   const handleAudioSubmission = async (audioData: Blob[]) => {
     try {
-      console.log(`Processing audio submission on ${isMobileDevice ? 'mobile' : 'desktop'}...`);
-      console.log('Audio chunks:', audioData.length);
+      console.log('Starting audio submission...');
       setIsProcessing(true);
+
+      const userAudioBlob = new Blob(audioData, { type: 'audio/webm;codecs=opus' });
       
-      const userAudioBlob = new Blob(audioData, { 
-        type: 'audio/webm;codecs=opus'
-      });
-      console.log('Audio blob size:', userAudioBlob.size);
-      
-      // Minimum size threshold (different for mobile/desktop)
-      const minSize = isMobileDevice ? 100 : 200;
-      if (userAudioBlob.size < minSize) {
-        throw new Error(
-          isMobileDevice
-            ? 'No audio recorded. Please try speaking louder or check microphone permissions.'
-            : 'No audio detected. Please speak closer to the microphone.'
-        );
+      if (userAudioBlob.size < (isMobileDevice ? 100 : 200)) {
+        throw new Error('No audio detected. Please try speaking again.');
       }
 
       const formData = new FormData();
       formData.append('audio', userAudioBlob);
-      
-      console.log('Sending to speech-to-text API...');
-      const transcriptionResponse = await fetch('/api/speech-to-text', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!transcriptionResponse.ok) {
-        const errorData = await transcriptionResponse.json().catch(() => ({}));
-        console.error('Speech to text failed:', errorData);
-        throw new Error(errorData.error || 'Failed to convert speech to text. Please try again.');
+
+      // Add simple timeout controller
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      try {
+        // Speech to text
+        console.log('Converting speech to text...');
+        const transcriptionResponse = await fetch('/api/speech-to-text', {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal
+        });
+
+        if (!transcriptionResponse.ok) {
+          throw new Error('Failed to convert speech to text');
+        }
+
+        const { text } = await transcriptionResponse.json();
+        
+        if (!text?.trim()) {
+          throw new Error('No speech detected. Please try speaking again.');
+        }
+
+        // Add user message
+        setMessages(prev => [...prev, {
+          role: 'user',
+          content: text,
+          timestamp: new Date()
+        }]);
+
+        // Get AI response
+        console.log('Getting AI response...');
+        const chatResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            context: {
+              skill,
+              level,
+              moduleId: selectedModule,
+              courseId: selectedCourse,
+              isFullModule: selectedCourse === `${selectedModule}_practice`,
+              moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
+            }
+          }),
+          signal: controller.signal
+        });
+
+        if (!chatResponse.ok) {
+          throw new Error('Failed to get AI response');
+        }
+
+        const { response: aiResponse } = await chatResponse.json();
+
+        // Text to speech
+        console.log('Converting to speech...');
+        const ttsResponse = await fetch('/api/text-to-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: aiResponse, level }),
+          signal: controller.signal
+        });
+
+        if (!ttsResponse.ok) {
+          throw new Error('Failed to convert text to speech');
+        }
+
+        const audioBlob = await ttsResponse.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Add AI message
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: aiResponse,
+          timestamp: new Date(),
+          audioUrl,
+          isPlaying: false
+        }]);
+
+        // Try to play audio
+        try {
+          const audio = new Audio(audioUrl);
+          await audio.play();
+        } catch (error) {
+          console.warn('Audio playback failed:', error);
+          // Don't throw - allow manual playback as fallback
+        }
+
+      } finally {
+        clearTimeout(timeoutId);
       }
-      
-      const { text } = await transcriptionResponse.json();
-      console.log('Transcribed text:', text);
-
-      if (!text || text.trim() === '') {
-        throw new Error(
-          isMobileDevice
-            ? 'No speech detected. Please try speaking louder or check your microphone.'
-            : 'No speech detected. Please check your microphone and try again.'
-        );
-      }
-
-      // Add user message
-      setMessages(prev => [...prev, {
-        role: 'user',
-        content: text,
-        timestamp: new Date()
-      }]);
-
-      // Get AI response
-      const chatResponse = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          context: { 
-            skill, 
-            level, 
-            moduleId: selectedModule,
-            courseId: selectedCourse,
-            isFullModule: selectedCourse === `${selectedModule}_practice`,
-            moduleTitle: getAvailableModules().find(m => m.id === selectedModule)?.title || ''
-          }
-        }),
-      });
-
-      if (!chatResponse.ok) throw new Error('Chat response failed');
-      const { response } = await chatResponse.json();
-
-      // Convert AI response to speech
-      const ttsResponse = await fetch('/api/text-to-speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: response,
-          level
-        }),
-      });
-
-      if (!ttsResponse.ok) throw new Error('Text to speech failed');
-      const aiAudioBlob = await ttsResponse.blob();
-      const audioUrl = URL.createObjectURL(aiAudioBlob);
-
-      // Auto-play the audio response
-      const audio = new Audio(audioUrl);
-      audio.play();
-
-      // Add AI response with audio
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-        audioUrl
-      }]);
 
     } catch (error: any) {
-      console.error(`Error processing ${isMobileDevice ? 'mobile' : 'desktop'} audio:`, error);
-      alert(`Recording error: ${error.message || 'Please try again'}`);
+      console.error('Processing error:', error);
+      
+      // Show a simple error message
+      const userMessage = error.name === 'AbortError'
+        ? 'Request timed out. Please try again.'
+        : error.message || 'An error occurred. Please try again.';
+      
+      alert(userMessage);
     } finally {
       setIsProcessing(false);
     }
