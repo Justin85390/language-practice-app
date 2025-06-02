@@ -82,14 +82,17 @@ export default function Home() {
   // Add device detection
   const [isMobileDevice, setIsMobileDevice] = useState(false);
 
-  // Add iOS detection
-  const isIOS = useRef(false);
+  // Add Safari detection
+  const isSafari = useRef(false);
 
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [audioPlaying, setAudioPlaying] = useState<string | null>(null);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Add iOS detection
+  const isIOS = useRef(false);
 
   // Detect mobile device on component mount
   useEffect(() => {
@@ -113,6 +116,16 @@ export default function Home() {
     checkIOS();
   }, []);
 
+  // Add Safari detection
+  useEffect(() => {
+    const checkBrowser = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      isSafari.current = /^((?!chrome|android).)*safari/i.test(userAgent);
+      console.log('Browser type:', isSafari.current ? 'Safari' : 'other');
+    };
+    checkBrowser();
+  }, []);
+
   const getAudioConstraints = () => {
     const baseConstraints = {
       echoCancellation: true,
@@ -128,26 +141,44 @@ export default function Home() {
       };
     }
 
+    if (isSafari.current) {
+      return {
+        ...baseConstraints,
+        channelCount: 1,
+        sampleRate: 44100,
+        sampleSize: 16
+      };
+    }
+
     return baseConstraints;
   };
 
   const startRecording = async () => {
     try {
-      console.log(`Starting recording on ${isMobileDevice ? 'mobile' : 'desktop'}...`);
+      console.log(`Starting recording on ${isSafari.current ? 'Safari' : isMobileDevice ? 'mobile' : 'desktop'}...`);
       
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: getAudioConstraints()
       });
 
-      const options = {
-        mimeType: 'audio/webm;codecs=opus'
-      };
+      let options: MediaRecorderOptions = {};
+      
+      // Safari-specific handling
+      if (isSafari.current) {
+        options = {
+          mimeType: 'audio/mp4'
+        };
+      } else {
+        options = {
+          mimeType: 'audio/webm;codecs=opus'
+        };
+      }
 
       let mediaRecorder;
       try {
         mediaRecorder = new MediaRecorder(stream, options);
       } catch (e) {
-        console.log('Opus codec not supported, falling back to default codec');
+        console.log('Preferred codec not supported, falling back to default codec');
         mediaRecorder = new MediaRecorder(stream);
       }
 
@@ -155,7 +186,7 @@ export default function Home() {
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        console.log(`Audio data available (${isMobileDevice ? 'mobile' : 'desktop'}):`, e.data.size);
+        console.log(`Audio data available (${isSafari.current ? 'Safari' : isMobileDevice ? 'mobile' : 'desktop'}):`, e.data.size);
         if (e.data.size > 0) {
           chunksRef.current.push(e.data);
         }
@@ -163,22 +194,26 @@ export default function Home() {
 
       mediaRecorder.onerror = (e) => {
         console.error('MediaRecorder error:', e);
-        const errorMessage = isMobileDevice
-          ? 'Recording error. Please check microphone permissions in your mobile settings.'
-          : 'Error during recording. Please check your microphone settings.';
+        const errorMessage = isSafari.current
+          ? 'Recording error in Safari. Please ensure microphone permissions are granted.'
+          : isMobileDevice
+            ? 'Recording error. Please check microphone permissions in your mobile settings.'
+            : 'Error during recording. Please check your microphone settings.';
         alert(errorMessage);
       };
 
-      // Collect data more frequently on mobile
-      const interval = isMobileDevice ? 500 : 1000;
+      // Collect data more frequently on Safari and mobile
+      const interval = isSafari.current || isMobileDevice ? 500 : 1000;
       mediaRecorder.start(interval);
       console.log(`Recording started (${interval}ms intervals)`);
       setIsRecording(true);
     } catch (error) {
       console.error('Microphone access error:', error);
-      const errorMessage = isMobileDevice
-        ? 'Unable to access microphone. Please check permissions in both app and browser settings.'
-        : 'Unable to access microphone. Please ensure microphone permissions are granted.';
+      const errorMessage = isSafari.current
+        ? 'Unable to access microphone in Safari. Please check your browser settings and ensure microphone access is allowed.'
+        : isMobileDevice
+          ? 'Unable to access microphone. Please check permissions in both app and browser settings.'
+          : 'Unable to access microphone. Please ensure microphone permissions are granted.';
       alert(errorMessage);
     }
   };
@@ -212,14 +247,19 @@ export default function Home() {
       console.log('Starting audio submission...');
       setIsProcessing(true);
 
-      const userAudioBlob = new Blob(audioData, { type: 'audio/webm;codecs=opus' });
+      // Create blob with appropriate type for the browser
+      const blobType = isSafari.current ? 'audio/mp4' : 'audio/webm;codecs=opus';
+      const userAudioBlob = new Blob(audioData, { type: blobType });
       
-      if (userAudioBlob.size < (isMobileDevice ? 100 : 200)) {
+      if (userAudioBlob.size < (isMobileDevice || isSafari.current ? 100 : 200)) {
         throw new Error('No audio detected. Please try speaking again.');
       }
 
       const formData = new FormData();
       formData.append('audio', userAudioBlob);
+      
+      // Add browser info to help server handle format appropriately
+      formData.append('browser', isSafari.current ? 'safari' : 'other');
 
       // Speech to text with 30s timeout
       console.log('Starting speech-to-text...');
