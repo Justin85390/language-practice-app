@@ -79,6 +79,12 @@ export default function Home() {
   // Add device detection
   const [isMobileDevice, setIsMobileDevice] = useState(false);
 
+  // Add iOS detection
+  const isIOS = useRef(false);
+
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [audioPlaying, setAudioPlaying] = useState<string | null>(null);
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -92,6 +98,16 @@ export default function Home() {
     };
 
     checkMobile();
+  }, []);
+
+  // Add iOS detection
+  useEffect(() => {
+    const checkIOS = () => {
+      const userAgent = navigator.userAgent || navigator.vendor;
+      isIOS.current = /ipad|iphone|ipod/.test(userAgent.toLowerCase()) && !(window as any).MSStream;
+      console.log('Device type:', isIOS.current ? 'iOS' : 'other');
+    };
+    checkIOS();
   }, []);
 
   const getAudioConstraints = () => {
@@ -161,6 +177,30 @@ export default function Home() {
         ? 'Unable to access microphone. Please check permissions in both app and browser settings.'
         : 'Unable to access microphone. Please ensure microphone permissions are granted.';
       alert(errorMessage);
+    }
+  };
+
+  // Initialize audio context for iOS
+  const initializeIOSAudio = async () => {
+    try {
+      if (!audioContext) {
+        console.log('Initializing iOS audio context...');
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioContext({ sampleRate: 44100 });
+        
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+          console.log('Audio context resumed');
+        }
+        
+        setAudioContext(ctx);
+        console.log('iOS Audio Context initialized:', ctx.state);
+        return ctx;
+      }
+      return audioContext;
+    } catch (error) {
+      console.error('Error initializing iOS audio context:', error);
+      return null;
     }
   };
 
@@ -283,13 +323,21 @@ export default function Home() {
             }]);
 
             // Try to play audio
-            try {
-              const audio = new Audio(audioUrl);
-              await audio.play();
-              console.log('Audio playback started');
-            } catch (error) {
-              console.warn('Audio playback failed:', error);
-              // Don't throw - allow manual playback as fallback
+            if (isIOS.current || isMobileDevice) {
+              console.log('Attempting mobile audio playback...');
+              try {
+                await handleAudioPlayback(audioUrl, messages.length);
+              } catch (error) {
+                console.warn('Mobile audio playback failed:', error);
+                // Don't throw - allow manual playback as fallback
+              }
+            } else {
+              try {
+                await handleAudioPlayback(audioUrl, messages.length);
+              } catch (error) {
+                console.warn('Audio playback failed:', error);
+                // Don't throw - allow manual playback as fallback
+              }
             }
 
           } finally {
@@ -391,6 +439,98 @@ export default function Home() {
   };
 
   const targetLanguageData = getTargetLanguage();
+
+  // Modify the audio playback section in handleAudioSubmission
+  const handleAudioPlayback = async (audioUrl: string, messageIndex: number) => {
+    try {
+      console.log('Starting audio playback...');
+      
+      // Stop any currently playing audio
+      if (audioPlaying) {
+        console.log('Stopping previous audio...');
+        const oldAudio = new Audio(audioPlaying);
+        oldAudio.pause();
+        setAudioPlaying(null);
+      }
+
+      // For iOS/mobile, ensure audio context is initialized
+      if (isIOS.current || isMobileDevice) {
+        console.log('Mobile device detected, initializing audio context...');
+        await initializeIOSAudio();
+      }
+
+      console.log('Creating new audio element...');
+      const audio = new Audio(audioUrl);
+      
+      // iOS/mobile-specific settings
+      if (isIOS.current || isMobileDevice) {
+        console.log('Applying mobile-specific audio settings...');
+        audio.preload = 'auto';
+        (audio as any).playsinline = true;
+        (audio as any).webkitPlaysinline = true;
+        audio.setAttribute('webkit-playsinline', 'true');
+        audio.volume = 1.0;
+      }
+
+      // Update UI before attempting playback
+      setMessages(prev => prev.map((msg, idx) => ({
+        ...msg,
+        isPlaying: idx === messageIndex
+      })));
+      
+      setAudioPlaying(audioUrl);
+
+      // Set up event listeners
+      audio.addEventListener('loadstart', () => console.log('Audio loading started'));
+      audio.addEventListener('loadedmetadata', () => console.log('Audio metadata loaded'));
+      audio.addEventListener('canplay', () => console.log('Audio can start playing'));
+      audio.addEventListener('playing', () => console.log('Audio playback started'));
+      audio.addEventListener('error', (e) => console.error('Audio error:', e));
+
+      // Wait for audio to be ready
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.log('Audio loading timed out, trying to play anyway...');
+          resolve(true);
+        }, 3000);
+
+        audio.addEventListener('canplaythrough', () => {
+          clearTimeout(timeout);
+          console.log('Audio ready to play');
+          resolve(true);
+        }, { once: true });
+      });
+
+      // Try playback
+      console.log('Attempting audio playback...');
+      await audio.play();
+      console.log('Audio playback successful');
+
+      // Handle playback completion
+      audio.onended = () => {
+        console.log('Audio playback completed');
+        setAudioPlaying(null);
+        setMessages(prev => prev.map(msg => ({
+          ...msg,
+          isPlaying: false
+        })));
+      };
+
+    } catch (error) {
+      console.error('Audio playback error:', error);
+      setAudioPlaying(null);
+      setMessages(prev => prev.map(msg => ({
+        ...msg,
+        isPlaying: false
+      })));
+      
+      // Show platform-specific error message
+      if (isIOS.current || isMobileDevice) {
+        console.log('Showing mobile-specific error message');
+        alert('Audio playback failed. Try tapping the play button or check if your device is in silent mode.');
+      }
+    }
+  };
 
   return (
     <Container maxWidth="xl">
