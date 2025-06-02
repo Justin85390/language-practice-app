@@ -33,6 +33,8 @@ import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import FeedbackIcon from '@mui/icons-material/RateReview';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
 import { SKILLS, LEVELS, WELCOMING_VISITORS_B1, Module, Course, TargetLanguage } from '@/utils/courseData';
 
 // Mock target language phrases - in real app, these would come from your course data
@@ -52,6 +54,7 @@ interface Message {
   content: string;
   timestamp: Date;
   audioUrl?: string;
+  isPlaying: boolean;
 }
 
 export default function Home() {
@@ -248,8 +251,9 @@ export default function Home() {
         setMessages(prev => [...prev, {
           role: 'user',
           content: text,
-          timestamp: new Date()
-        }]);
+          timestamp: new Date(),
+          isPlaying: false
+        } as Message]);
 
         // Chat API with 30s timeout
         console.log('Starting chat API call...');
@@ -313,43 +317,40 @@ export default function Home() {
 
             const audioUrl = URL.createObjectURL(audioBlob);
 
-            // Add AI message
+            // Add AI message and clear processing state
             setMessages(prev => [...prev, {
               role: 'assistant',
               content: aiResponse,
               timestamp: new Date(),
               audioUrl,
               isPlaying: false
-            }]);
+            } as Message]);
+            setIsProcessing(false);
 
             // Try to play audio
             if (isIOS.current || isMobileDevice) {
-              console.log('Attempting mobile audio playback...');
-              try {
-                await handleAudioPlayback(audioUrl, messages.length);
-              } catch (error) {
-                console.warn('Mobile audio playback failed:', error);
-                // Don't throw - allow manual playback as fallback
-              }
+              console.log('Mobile device detected, not attempting auto-playback');
             } else {
               try {
                 await handleAudioPlayback(audioUrl, messages.length);
               } catch (error) {
                 console.warn('Audio playback failed:', error);
-                // Don't throw - allow manual playback as fallback
               }
             }
 
           } finally {
             clearTimeout(ttsTimeout);
+            setIsProcessing(false);
           }
 
         } finally {
           clearTimeout(chatTimeout);
+          setIsProcessing(false);
         }
 
       } finally {
         clearTimeout(sttTimeout);
+        setIsProcessing(false);
       }
 
     } catch (error: any) {
@@ -923,6 +924,15 @@ export default function Home() {
                           <Typography variant="body1" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                             {message.content}
                           </Typography>
+                          {message.role === 'assistant' && message.audioUrl && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleAudioPlayback(message.audioUrl!, index)}
+                              sx={{ mt: 1 }}
+                            >
+                              {message.isPlaying ? <PauseIcon /> : <PlayArrowIcon />}
+                            </IconButton>
+                          )}
                         </Paper>
                         <Typography variant="caption" sx={{ mt: 0.5 }}>
                           {message.timestamp.toLocaleTimeString()}
@@ -1013,7 +1023,7 @@ export default function Home() {
                               role: 'assistant',
                               content: response,
                               timestamp: new Date()
-                            }]);
+                            } as Message]);
 
                             // Convert feedback to speech
                             const ttsResponse = await fetch('/api/text-to-speech', {
