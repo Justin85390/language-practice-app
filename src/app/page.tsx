@@ -248,18 +248,49 @@ export default function Home() {
       setIsProcessing(true);
 
       // Create blob with appropriate type for the browser
-      const blobType = isSafari.current ? 'audio/mp4' : 'audio/webm;codecs=opus';
-      const userAudioBlob = new Blob(audioData, { type: blobType });
+      let userAudioBlob;
+      if (isSafari.current) {
+        // For Safari, convert to WAV format which is more widely supported
+        console.log('Converting audio for Safari...');
+        try {
+          // Combine all chunks into a single blob
+          const audioBlob = new Blob(audioData, { type: 'audio/mp4' });
+          
+          // Create an audio element to check the actual format
+          const audio = new Audio();
+          audio.src = URL.createObjectURL(audioBlob);
+          
+          // Wait for metadata to load
+          await new Promise((resolve) => {
+            audio.addEventListener('loadedmetadata', resolve);
+            audio.addEventListener('error', resolve); // Handle loading error
+          });
+          
+          console.log('Safari audio format:', audio.src);
+          userAudioBlob = audioBlob;
+        } catch (error) {
+          console.error('Safari audio conversion error:', error);
+          // Fallback to original format
+          userAudioBlob = new Blob(audioData, { type: 'audio/mp4' });
+        }
+      } else {
+        userAudioBlob = new Blob(audioData, { type: 'audio/webm;codecs=opus' });
+      }
       
       if (userAudioBlob.size < (isMobileDevice || isSafari.current ? 100 : 200)) {
         throw new Error('No audio detected. Please try speaking again.');
       }
 
+      console.log('Audio blob created:', {
+        type: userAudioBlob.type,
+        size: userAudioBlob.size,
+        browser: isSafari.current ? 'safari' : 'other'
+      });
+
       const formData = new FormData();
       formData.append('audio', userAudioBlob);
-      
-      // Add browser info to help server handle format appropriately
       formData.append('browser', isSafari.current ? 'safari' : 'other');
+      formData.append('contentType', userAudioBlob.type);
 
       // Speech to text with 30s timeout
       console.log('Starting speech-to-text...');
@@ -273,15 +304,26 @@ export default function Home() {
         const transcriptionResponse = await fetch('/api/speech-to-text', {
           method: 'POST',
           body: formData,
-          signal: sttController.signal
+          signal: sttController.signal,
+          headers: {
+            // Don't set Content-Type here, let the browser set it with the FormData boundary
+            'Accept': 'application/json',
+            'X-Browser': isSafari.current ? 'safari' : 'other',
+          }
         });
 
         if (!transcriptionResponse.ok) {
-          throw new Error('Failed to convert speech to text');
+          const errorText = await transcriptionResponse.text();
+          console.error('STT response error:', {
+            status: transcriptionResponse.status,
+            statusText: transcriptionResponse.statusText,
+            error: errorText
+          });
+          throw new Error(`Failed to convert speech to text: ${transcriptionResponse.status} ${errorText}`);
         }
 
         const { text } = await transcriptionResponse.json();
-        console.log('Speech-to-text succeeded');
+        console.log('Speech-to-text succeeded:', { text });
         
         if (!text?.trim()) {
           throw new Error('No speech detected. Please try speaking again.');
