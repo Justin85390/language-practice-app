@@ -288,13 +288,13 @@ export default function Home() {
           const { response: aiResponse } = await chatResponse.json();
           console.log('Chat API succeeded');
 
-          // Text to speech with 30s timeout
+          // Text to speech with 45s timeout (increased from 30s)
           console.log('Starting text-to-speech...');
           const ttsController = new AbortController();
           const ttsTimeout = setTimeout(() => {
             console.log('Text-to-speech timed out');
             ttsController.abort();
-          }, 30000);
+          }, 45000);
 
           try {
             const ttsResponse = await fetch('/api/text-to-speech', {
@@ -305,6 +305,14 @@ export default function Home() {
             });
 
             if (!ttsResponse.ok) {
+              // Add the AI message even if TTS fails
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: aiResponse,
+                timestamp: new Date(),
+                isPlaying: false
+              } as Message]);
+              setIsProcessing(false);
               throw new Error('Failed to convert text to speech');
             }
 
@@ -312,12 +320,20 @@ export default function Home() {
             console.log('Text-to-speech succeeded');
 
             if (audioBlob.size === 0) {
+              // Add the AI message even if audio is empty
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: aiResponse,
+                timestamp: new Date(),
+                isPlaying: false
+              } as Message]);
+              setIsProcessing(false);
               throw new Error('Received empty audio response');
             }
 
             const audioUrl = URL.createObjectURL(audioBlob);
 
-            // Add AI message and clear processing state
+            // Add AI message with audio
             setMessages(prev => [...prev, {
               role: 'assistant',
               content: aiResponse,
@@ -325,36 +341,42 @@ export default function Home() {
               audioUrl,
               isPlaying: false
             } as Message]);
-            setIsProcessing(false);
 
-            // Try to play audio
-            if (isIOS.current || isMobileDevice) {
-              console.log('Mobile device detected, not attempting auto-playback');
-            } else {
+            // Try to play audio only on desktop
+            if (!isIOS.current && !isMobileDevice) {
               try {
                 await handleAudioPlayback(audioUrl, messages.length);
               } catch (error) {
-                console.warn('Audio playback failed:', error);
+                console.warn('Desktop audio playback failed:', error);
+                // Continue since message is already added
               }
             }
 
+          } catch (error) {
+            console.error('TTS error:', error);
+            // Don't rethrow - we've already handled the error by showing the message
           } finally {
             clearTimeout(ttsTimeout);
             setIsProcessing(false);
           }
 
+        } catch (error) {
+          console.error('Chat API error:', error);
+          throw error;
         } finally {
           clearTimeout(chatTimeout);
-          setIsProcessing(false);
         }
 
+      } catch (error) {
+        console.error('STT error:', error);
+        throw error;
       } finally {
         clearTimeout(sttTimeout);
-        setIsProcessing(false);
       }
 
     } catch (error: any) {
       console.error('Processing error:', error);
+      setIsProcessing(false);
       
       // Show a simple error message
       let userMessage = 'An error occurred. Please try again.';
@@ -366,14 +388,12 @@ export default function Home() {
       } else if (error.message?.includes('AI response')) {
         userMessage = 'Failed to get AI response. Please try again.';
       } else if (error.message?.includes('text-to-speech')) {
-        userMessage = 'Failed to generate audio. Please try again.';
+        userMessage = 'Failed to generate audio. The response is still visible and you can try recording again.';
       } else if (error.message) {
         userMessage = error.message;
       }
       
       alert(userMessage);
-    } finally {
-      setIsProcessing(false);
     }
   };
 
